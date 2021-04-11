@@ -105,12 +105,13 @@ def main():
         claim_dev_path = args.claim_dev_path
         claim_test_path = args.claim_test_path
 
-    args.model = 'allenai/scibert_scivocab_cased'
+    # args.model = 'allenai/scibert_scivocab_cased'
     # args.model = 'model/SciBert_checkpoint'
+    args.model = 'dmis-lab/biobert-base-cased-v1.1-mnli'
     # args.model = 'roberta-large'
-    args.epochs = 40
+    args.epochs = 20
     args.lr_base = 1e-5
-    args.lr_linear = 1e-3
+    args.lr_linear = 5e-6
     args.batch_size_gpu = 8
     args.dropout = 0
     args.k = 30
@@ -123,7 +124,10 @@ def main():
                                    sep_token=tokenizer.sep_token, k=args.k, train=False)
     # print(test_set.samples[0])
     checkpoint = train_base(train_set, dev_set, args)
-    # checkpoint = 'model/JointModel_SciBert_cnn_focal.model'
+    # checkpoint = 'model/JointModel.model'
+    # checkpoint = 'tmp-runs/161769069367461-abstract_f1-9804-rationale_f1-6108.model'
+    # checkpoint = 'tmp-runs/161778744561827-abstract_f1-9918-rationale_f1-6435.model'
+    # print(checkpoint)
     abstract_result, rationale_result = get_predictions(args, test_set, checkpoint)
     rationales, labels = predictions2jsonl(test_set.samples, abstract_result, rationale_result)
     # merge(rationales, labels, args.merge_results)

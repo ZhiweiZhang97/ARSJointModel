@@ -26,9 +26,12 @@ def get_predictions(args, input_set, checkpoint):
             # encoded = {key: tensor.to(device) for key, tensor in encoded.items()}
             transformation_indices = token_idx_by_sentence(encoded_dict['input_ids'], tokenizer.sep_token_id,
                                                            args.model)
+            match_indices = token_idx_by_sentence(encoded_dict["input_ids"], tokenizer.sep_token_id,
+                                                  args.model, match=True)
             encoded_dict = {key: tensor.to(device) for key, tensor in encoded_dict.items()}
             transformation_indices = [tensor.to(device) for tensor in transformation_indices]
-            abstract_out, rationale_out = model(encoded_dict, transformation_indices)
+            match_indices = [tensor.to(device) for tensor in match_indices]
+            abstract_out, rationale_out = model(encoded_dict, transformation_indices, match_indices)
             abstract_result.extend(abstract_out)
             rationale_result.extend(rationale_out)
 

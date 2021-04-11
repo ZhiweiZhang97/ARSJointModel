@@ -1,9 +1,10 @@
 import torch
 import torch.nn as nn
 from jsonlines import jsonlines
+import numpy as np
 
 
-def token_idx_by_sentence(input_ids, sep_token_id, model_name):
+def token_idx_by_sentence(input_ids, sep_token_id, model_name, match=False):
     """
     Compute the token indices matrix of the BERT output.
     input_ids: (batch_size, paragraph_len)
@@ -16,18 +17,23 @@ def token_idx_by_sentence(input_ids, sep_token_id, model_name):
     paragraph_lens = torch.sum(sep_tokens, 1).numpy().tolist()
     indices = torch.arange(sep_tokens.size(-1)).unsqueeze(0).expand(sep_tokens.size(0), -1)
     sep_indices = torch.split(indices[sep_tokens], paragraph_lens)
+    if match:
+        sep_indices = (torch.tensor(np.array(sep_indices[0])[[0, -1]].tolist()),)
     paragraph_lens = []
     all_word_indices = []
     for paragraph in sep_indices:
-        if "large" in model_name:
+        if "large" in model_name and ('biobert' not in model_name):
             paragraph = paragraph[1:]
         word_indices = [torch.arange(paragraph[i]+1, paragraph[i+1]+1) for i in range(paragraph.size(0)-1)]
         paragraph_lens.append(len(word_indices))
         all_word_indices.extend(word_indices)
     # pad_sequence: stacks a list of Tensors along a new dimension, and pads them to equal length.
     indices_by_sentence = nn.utils.rnn.pad_sequence(all_word_indices, batch_first=True, padding_value=padding_idx)
-    indices_by_sentence_split = torch.split(indices_by_sentence,paragraph_lens)
+    indices_by_sentence_split = torch.split(indices_by_sentence, paragraph_lens)
     indices_by_batch = nn.utils.rnn.pad_sequence(indices_by_sentence_split, batch_first=True, padding_value=padding_idx)
+    # if match:
+    #     padd2maxlen = torch.tensor([[-1 for _ in range(indices_by_batch.shape[2], 512)] for _ in range(2)]).unsqueeze(0)
+    #     indices_by_batch = torch.cat([indices_by_batch, padd2maxlen], 2)
     batch_indices = torch.arange(sep_tokens.size(0)).unsqueeze(-1).unsqueeze(-1).expand(-1,
                                                                                         indices_by_batch.size(1),
                                                                                         indices_by_batch.size(-1))
@@ -88,7 +94,8 @@ def predictions2jsonl(claims_file, abstract_results, rationale_results):
 
     claim_ids = []
     claims = {}
-    LABELS = ['CONTRADICT', 'NOT_ENOUGH_INFO', 'SUPPORT']
+    # LABELS = ['CONTRADICT', 'NOT_ENOUGH_INFO', 'SUPPORT']
+    LABELS = ['NOT_ENOUGH_INFO', 'CONTRADICT', 'SUPPORT']
     for claim, abstract in zip(claims_file, abstract_results):
         claim_id = claim['claim_id']
         claim_ids.append(claim_id)

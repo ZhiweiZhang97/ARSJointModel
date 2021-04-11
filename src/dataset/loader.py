@@ -345,6 +345,15 @@ def clean_url(word):
     return word
 
 
+def clean_invalid_sentence(abstract):
+    sentences = []
+    for sen in abstract:
+        sen = re.sub(r'[?\.?\s]', ' ', sen).strip()
+        if sen != '':
+            sentences.append(sen)
+    return sentences
+
+
 def down_sample(abstract_sentences, evidence_sentence_idx, label, p, sep_token):
     kept_sentences = []
     evidence_map = []
@@ -370,7 +379,8 @@ class SciFactJointDataset(Dataset):
         # sep_token = ''
         self.rationale_label = {'NOT_ENOUGH_INFO': 0, 'RATIONALE': 1}
         self.rev_rationale_label = {i: l for (l, i) in self.rationale_label.items()}
-        self.abstract_label = {'CONTRADICT': 0, 'NOT_ENOUGH_INFO': 1, 'SUPPORT': 2}
+        # self.abstract_label = {'CONTRADICT': 0, 'NOT_ENOUGH_INFO': 1, 'SUPPORT': 2}
+        self.abstract_label = {'NOT_ENOUGH_INFO': 0, 'CONTRADICT': 1,  'SUPPORT': 2}
         self.rev_abstract_label = {i: l for (l, i) in self.abstract_label.items()}
 
         self.samples = []
@@ -394,6 +404,7 @@ class SciFactJointDataset(Dataset):
                 if "discourse" in doc:
                     print(doc['discourse'])
                 abstract_sentences = [sentence.strip() for sentence in doc['abstract']]
+                abstract_sentences = clean_invalid_sentence(abstract_sentences)  # #
                 if train:
                     if str(doc_id) in claim['evidence']:  # cited_doc is evidence
                         evidence = claim['evidence'][str(doc_id)]
@@ -427,8 +438,7 @@ class SciFactJointDataset(Dataset):
                                 'paragraph': ' '.join(kept_sentences),
                                 'sentence_label': rationale_label_str,
                                 'abstract_label': self.abstract_label[kept_label],
-                                'sim_label': 1 if int(self.abstract_label[kept_label]) == 0 or int(self.abstract_label[
-                                    kept_label]) == 2 else 0,
+                                'sim_label': 1 if doc['doc_id'] in claim['cited_doc_ids'] else 0,
                                 # 'doc_length': len(abstract_sentences),
                                 # 'sentence_length': [[len(sen.split(' ')) for sen in abstract_sentences]]
                             })
@@ -453,8 +463,7 @@ class SciFactJointDataset(Dataset):
                         'paragraph': ' '.join(abstract_sentences),
                         'sentence_label': rationale_label_str,
                         'abstract_label': self.abstract_label[label],
-                        'sim_label': 1 if int(self.abstract_label[label]) == 0 or int(self.abstract_label[
-                                    label]) == 2 else 0,
+                        'sim_label': 1 if doc['doc_id'] in claim['cited_doc_ids'] else 0,
                         # 'doc_length': len(abstract_sentences),
                         # 'sentence_length': [[len(sen.split(' ')) for sen in abstract_sentences]]
                     })

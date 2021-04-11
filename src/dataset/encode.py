@@ -25,7 +25,7 @@ def encode_sentence(tokenizer, sentences: List[str]):
     # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     encoded_dict = tokenizer.batch_encode_plus(
         sentences,
-        pad_to_max_length=True,
+        padding=True,
         return_tensors='pt')
     if encoded_dict['input_ids'].size(1) > 512:
         # Too long for the model. Truncate it
@@ -33,7 +33,7 @@ def encode_sentence(tokenizer, sentences: List[str]):
             sentences,
             max_length=512,
             truncation_strategy='only_first',
-            pad_to_max_length=True,
+            padding=True,
             return_tensors='pt')
     # encoded_dict = {key: tensor.to(device) for key, tensor in encoded_dict.items()}
     return encoded_dict
@@ -81,7 +81,7 @@ def encode_paragraph(tokenizer, claim, abstract, max_sent_len=512):
     encoded_dict = tokenizer.batch_encode_plus(
         list(zip(claim, abstract)),
         # padding=True,
-        pad_to_max_length=True,
+        padding=True,
         add_special_tokens=True,
         return_tensors='pt')
     if encoded_dict['input_ids'].size(1) > max_sent_len:
