@@ -1,6 +1,6 @@
 # SciFact_JointModel
 Shared Tasks of Scholarly Document Processing @ NAACL 2021 -- **SCIVER: Verifying Scientific Claims with Evidence**
-# 
+## 
 
 Due to the rapid growth in scientific literature, it is difficult for scientists to stay up-to-date on the latest findings. This challenge is especially acute during pandemics due to the risk of making decisions based on outdated or incomplete information. There is a need for AI systems that can help scientists with information overload and support scientific fact checking and evidence synthesis.
 
