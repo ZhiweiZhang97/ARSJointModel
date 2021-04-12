@@ -35,17 +35,21 @@ Due to the rapid growth in scientific literature, it is difficult for scientists
 Two evaluation metrics will be used. 
 
 **Abstract-level evaluation**
+
 Abstract-level evaluation is similar to the FEVER score, described in the FEVER paper (Thorne et al., 2018). A predicted abstract is Correct if:
 
 1. The predicted abstract is a relevant abstract.
 2. The abstract's predicted Support or Refute label matches its gold label.
 3. The abstract's predicted evidence sentences contain at least one full gold evidence set. Inspired by the FEVER score, the number of predicted sentences is limited to 3.
+
 We then compute the F1 score over all predicted abstracts.
 
 **Sentence-level evaluation**
+
 Sentence-level evaluation scores the correctness of the individual predicted evidence sentences. A predicted sentence Correct if:
 
 1. The abstract containing the sentence is labeled correctly as Support or Refute.
 2. The sentence is part of some gold evidence set.
 3. All other sentences in that same gold evidence set are also identified by the model as evidence sentences.
+
 We then compute the F1 score over all predicted evidence sentences.
