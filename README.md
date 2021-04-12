@@ -15,13 +15,13 @@ Due to the rapid growth in scientific literature, it is difficult for scientists
   "id": 52,
   "claim": "ALDH1 expression is associated with poorer prognosis for breast cancer primary tumors.",
   "evidence": {
-    "11": [                     // 2 evidence sets in document 11 support the claim.
-       {"sentences": [0, 1],    // Sentences 0 and 1, taken together, support the claim.
+    "11": [                     # 2 evidence sets in document 11 support the claim.
+       {"sentences": [0, 1],    # Sentences 0 and 1, taken together, support the claim.
         "label": "SUPPORT"},
-       {"sentences": [11],      // Sentence 11, on its own, supports the claim.
+       {"sentences": [11],      # Sentence 11, on its own, supports the claim.
         "label": "SUPPORT"}
     ],
-    "15": [                     // A single evidence set in document 15 supports the claim.
+    "15": [                     # A single evidence set in document 15 supports the claim.
        {"sentences": [4], 
         "label": "SUPPORT"}
     ]
