@@ -10,3 +10,21 @@ Due to the rapid growth in scientific literature, it is difficult for scientists
 * A list of abstracts from the corpus containing relevant evidence.
 * A label indicating whether each abstract Supports or Refutes the claim.
 * All evidence sets found in each abstract that justify the label. An evidence set is a collection of sentences that, taken together, verifies the claim. Evidence sets can be one or more sentences.
+///python
+{
+             "id": 52,
+             "claim": "ALDH1 expression is associated with poorer prognosis for breast cancer primary tumors.",
+             "evidence": {
+                "11": [                     // 2 evidence sets in document 11 support the claim.
+                   {"sentences": [0, 1],    // Sentences 0 and 1, taken together, support the claim.
+                    "label": "SUPPORT"},
+                   {"sentences": [11],      // Sentence 11, on its own, supports the claim.
+                    "label": "SUPPORT"}
+                ],
+                "15": [                     // A single evidence set in document 15 supports the claim.
+                   {"sentences": [4], 
+                    "label": "SUPPORT"}
+                ]
+             },
+             "cited_doc_ids": [11, 15]
+           }///
