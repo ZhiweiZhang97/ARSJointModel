@@ -18,7 +18,20 @@ def token_idx_by_sentence(input_ids, sep_token_id, model_name, match=False):
     indices = torch.arange(sep_tokens.size(-1)).unsqueeze(0).expand(sep_tokens.size(0), -1)
     sep_indices = torch.split(indices[sep_tokens], paragraph_lens)
     if match:
-        sep_indices = (torch.tensor(np.array(sep_indices[0])[[0, -1]].tolist()),)
+        tmp_indices = ()
+        for i in range(len(sep_indices)):
+            tmp_indices += (torch.tensor(np.array(sep_indices[i])[[0, -1]].tolist()),)
+        sep_indices = tmp_indices
+    else:
+        tmp_indices = ()
+        for i in range(len(sep_indices)):
+            tmp_indices += (torch.tensor([0] + np.array(sep_indices[i])[:].tolist()),)
+        sep_indices = tmp_indices
+    # else:
+    #     tmp_indices = ()
+    #     for i in range(len(sep_indices)):
+    #         tmp_indices += (torch.tensor(np.array(sep_indices[i])[1: len(sep_indices[i])].tolist()),)  # del title
+    #     sep_indices = tmp_indices
     paragraph_lens = []
     all_word_indices = []
     for paragraph in sep_indices:

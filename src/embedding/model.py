@@ -10,6 +10,35 @@ from transformers import AutoModel
 from embedding.loss import FocalLoss, MultiFocalLoss, DiceLoss
 
 
+def get_index(mask):
+    mask = mask.view(mask.size(0), mask.size(1) * mask.size(2))
+    index = []
+    max_len = 0
+    max_len_idx = 0
+    for i in range(len(mask)):
+        tmp = torch.where(mask[i] != 0)
+        index.append(tmp)
+        if max_len < len(tmp[0]):
+            max_len = len(tmp[0])
+            max_len_idx = i
+    token_index = []
+    max_sentence = index[max_len_idx][0].tolist()[:]
+    for i in range(len(index)):
+        i_len = len(index[i][0])
+        tmp = index[i][0].tolist() + max_sentence[i_len: max_len]
+        token_index.append(tmp)
+    if mask.size(0) == 1:
+        batch_indices = [np.zeros(max_len, dtype=int).tolist()]
+    else:
+        batch_indices = []
+        for i in range(mask.size(0)):
+            tmp = np.ones(max_len, dtype=int) * i
+            batch_indices += [tmp.tolist()]
+    if len(token_index) > 512:
+        token_index = token_index[0: 512]
+    return torch.tensor(token_index), torch.tensor(batch_indices)
+
+
 class WordAttention(nn.Module):
     """
     word-level attention
@@ -26,7 +55,7 @@ class WordAttention(nn.Module):
         att_s = self.dropout(torch.tanh(att_s))
         raw_att_scores = self.att_scorer(att_s).squeeze(-1).view(x.size(0), x.size(1),
                                                                  x.size(2))  # (batch_size, num_sentence, num_token)
-        # raw_att_scores = torch.exp(raw_att_scores - raw_att_scores.max())  # 不加的效果更好 大约5个点
+        raw_att_scores = torch.exp(raw_att_scores - raw_att_scores.max())
         att_scores = F.softmax(raw_att_scores.masked_fill((1 - token_mask).bool(), float('-inf')), dim=-1)
         att_scores = torch.where(torch.isnan(att_scores), torch.zeros_like(att_scores),
                                  att_scores)  # replace NaN with 0
@@ -36,38 +65,43 @@ class WordAttention(nn.Module):
         # (batch_size * num_sentence, input_size)
         out = out.view(x.size(0), x.size(1), x.size(-1))
         mask = token_mask[:, :, 0]
-        return out, mask
+        return out, mask, batch_att_scores
 
 
 class SentenceAttention(nn.Module):
     """
-    sentence-level attention
+    sentence-level attention. abstract representation for label prediction.
     """
     def __init__(self, input_size, output_size, dropout=0.1):
         super(SentenceAttention, self).__init__()
-        self.sentence_attention = nn.Linear(input_size, output_size, bias=False)
+        self.sentence_attention = nn.Linear(input_size, output_size, bias=True)
         self.activation = torch.tanh
         self.dropout = nn.Dropout(dropout)
         self.att_scorer = nn.Linear(output_size, 1, bias=True)
         self.contextualized = False
+        self.hidden_size = input_size // 2
+        self.lstm = nn.LSTM(input_size, self.hidden_size, 1, dropout=dropout, bidirectional=True)
 
-    def forward(self, sentence_reps, sentence_mask, valid_scores):
-        # sentence_reps: [batch_size, num_sentence, hidden_dim]
-        sentence_mask = torch.logical_and(sentence_mask, valid_scores)
-        # Force those sentence representations in paragraph without rationale to be 0.
-        # NEI_mask = (torch.sum(sentence_mask, axis=1) > 0).long().unsqueeze(-1).expand(-1, sentence_reps.size(-1))
-
-        # if sentence_reps.size(0) > 0:
-        att_s = self.sentence_attention(sentence_reps)
-        u_i = self.dropout(torch.tanh(att_s))
-        u_w = self.att_scorer(u_i).squeeze(-1).view(sentence_reps.size(0), sentence_reps.size(1))
+    def forward(self, sentence_reps, sentence_mask):
+        sentence_mask = torch.logical_and(sentence_mask, sentence_mask)
+        h_0 = Variable(torch.zeros(2, sentence_reps.size(1), self.hidden_size).cuda())
+        c_0 = Variable(torch.zeros(2, sentence_reps.size(1), self.hidden_size).cuda())
+        # print(sentence_reps.shape)
+        sent_embeddings = self.dropout(sentence_reps)
+        sentence_embedding, (_, _) = self.lstm(sent_embeddings, (h_0, c_0))
+        att_s = self.sentence_attention(sentence_embedding)  # [batch_size, num_sentence, hidden_size,]
+        u_i = self.dropout(torch.tanh(att_s))  # u_i = tanh(W_s * h_i + b). [batch_size, num_sentence, hidden_size,]
+        u_w = self.att_scorer(u_i).squeeze(-1).view(sentence_reps.size(0), sentence_reps.size(1))  # [batch_size, num_sentence]
+        u_w = u_w.masked_fill((~sentence_mask).bool(), -1e4)
         val = u_w.max()
+        # att_scores: sentence attention scores. [batch_size, num_sentence]
         att_scores = torch.exp(u_w - val)
-        # att_scores = att_scores / torch.sum(att_scores, dim=1, keepdim=True)
-        att_scores = F.softmax(att_scores.masked_fill((~sentence_mask).bool(), -1e4), dim=-1)  # [batch_size, num_sentence]
-        result = torch.bmm(att_scores.unsqueeze(1), sentence_reps).squeeze(1)  # [batch_size, hidden_dim]
-        return result
-        # return sentence_reps[:, 0, :]
+        att_scores = att_scores / torch.sum(att_scores, dim=1, keepdim=True)
+        # att_scores: sentence attention scores. [batch_size, num_sentence]
+        # result: abstract representations. [batch_size, hidden_dim]
+        result = torch.bmm(att_scores.unsqueeze(1), sentence_reps).squeeze(1)
+        # sentence_reps = torch.mul(sentence_reps, att_scores.unsqueeze(2))
+        return result, att_scores
 
 
 class SentenceClassificationHead(nn.Module):
@@ -77,9 +111,9 @@ class SentenceClassificationHead(nn.Module):
         super(SentenceClassificationHead, self).__init__()
         self.dense = nn.Linear(hidden_size, hidden_size, bias=True)
         self.dropout = nn.Dropout(dropout)
-        self.classifier = nn.Linear(hidden_size, num_labels, bias=True)
+        self.classifier = ClassificationHead(hidden_size, num_labels)
         self.num_channels = hidden_size // 3
-        self.kernel_size = [2, 3, 4]
+        self.kernel_size = [2, 3, 4, 5]
         self.max_position_embeddings = 512
 
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=self.num_channels,
@@ -102,7 +136,11 @@ class SentenceClassificationHead(nn.Module):
         out = F.max_pool1d(activation, activation.size()[2]).squeeze(2)
         return out
 
-    def forward(self, x):
+    def forward(self, x, att_scores, mask):
+        batch_indices, indices_by_batch = get_index(mask)
+        x = torch.mul(x, att_scores)
+        x = x[batch_indices, indices_by_batch, :]
+
         pooled_output = x.unsqueeze(1)
 
         h1 = self.conv_pooling(pooled_output, self.conv1)
@@ -214,6 +252,7 @@ class JointModelClassifier(nn.Module):
         # self.abstract_criterion = MultiFocalLoss(3, alpha=[0.1, 0.6, 0.3])
         self.abstract_criterion = nn.CrossEntropyLoss()
         # self.rationale_criterion = nn.CrossEntropyLoss(ignore_index=2)
+        # self.abstract_criterion = MultiFocalLoss(3, alpha=[0.1, 0.6, 0.3])
         # self.rationale_criterion = FocalLoss(weight=torch.tensor([0.25, 0.75]), reduction='mean')
         self.rationale_criterion = DiceLoss(with_logits=True, smooth=1, ohem_ratio=0.1, alpha=0.01, reduction='mean',
                                             square_denominator=True)
@@ -223,28 +262,11 @@ class JointModelClassifier(nn.Module):
         self.word_attention = WordAttention(self.hidden_dim, self.hidden_dim, dropout=self.dropout)
         self.sentence_attention = SentenceAttention(self.hidden_dim, self.hidden_dim, dropout=self.dropout)
         self.rationale_linear = ClassificationHead(self.hidden_dim, self.num_rationale_label, dropout=self.dropout)
-        # self.abstract_linear = ClassificationHead(self.hidden_dim, self.num_abstract_label, dropout=self.dropout)
-        # self.similarity_linear = SentenceClassificationHead(self.hidden_dim, self.sim_label, dropout=self.dropout)
-        self.abstract_linear = SentenceClassificationHead(self.hidden_dim,
-                                                          self.num_abstract_label, dropout=self.dropout)
-        self.similarity_linear = ClassificationHead(self.hidden_dim, self.sim_label, dropout=self.dropout)
-
-        self.rationale_module = [
-            self.word_attention,
-            self.rationale_linear,
-            self.rationale_criterion,
-        ]
-
-        self.label_module = [
-            self.abstract_criterion,
-            self.abstract_linear,
-        ]
-
-        self.similarity_module = [
-            self.sentence_attention,
-            self.similarity_linear,
-            self.similarity_criterion,
-        ]
+        self.abstract_linear = ClassificationHead(self.hidden_dim, self.num_abstract_label, dropout=self.dropout)
+        self.similarity_linear = SentenceClassificationHead(self.hidden_dim, self.sim_label, dropout=self.dropout)
+        # self.abstract_linear = SentenceClassificationHead(self.hidden_dim,
+        #                                                   self.num_abstract_label, dropout=self.dropout)
+        # self.similarity_linear = ClassificationHead(self.hidden_dim, self.sim_label, dropout=self.dropout)
 
     def forward(self, encoded_dict, transformation_indices, abstract_label=None, rationale_label=None, sim_label=None,
                 train=False):
@@ -254,20 +276,20 @@ class JointModelClassifier(nn.Module):
         bert_out = self.bert(**encoded_dict)[0]  # [batch_size, sequence_len, hidden_dim]
         bert_tokens = bert_out[batch_indices, indices_by_batch, :]  # get SciBert tokens
         # bert_tokens: [batch_size, num_sentence, num_token, hidden_dim]
-        sentence_representations, sentence_mask = self.word_attention(bert_tokens, mask)
+        sentence_representations, sentence_mask, word_att_scores = self.word_attention(bert_tokens, mask)
         # print(sentence_representations.size())
         rationale_score = self.rationale_linear(sentence_representations)
         # word_attention_scores = rationale_score[:, :, 1]
         valid_scores = rationale_score[:, :, 1] > rationale_score[:, :, 0]
-        paragraph_representations = self.sentence_attention(sentence_representations, sentence_mask, valid_scores)
+        paragraph_representations, sen_att_scores = self.sentence_attention(sentence_representations, sentence_mask)
         # abstract_reps = self.bert_sentence_attention(encoded_dict['input_ids'], doc_length, sentence_length,
         #                                              encoded_dict['attention_mask'], encoded_dict['token_type_ids'],
         #                                              bert_out)
         # abstract_score = self.abstract_linear(abstract_reps)
         # abstract_score = self.abstract_linear(paragraph_representations)  # attention + linear
         # bert_embedding = self.bert(**encoded)[0]
-        abstract_score = self.abstract_linear(bert_out)  # CNN
-        sim_score = self.similarity_linear(paragraph_representations)
+        abstract_score = self.abstract_linear(paragraph_representations)  # CNN
+        # sim_score = self.similarity_linear(bert_tokens, word_att_scores, mask)
 
         abstract_out = torch.argmax(abstract_score.cpu(), dim=-1).detach().numpy().tolist()
         rationale_pred = torch.argmax(rationale_score.cpu(), dim=-1)
@@ -413,7 +435,7 @@ github  3.28
 # from torch.autograd import Variable
 # from torch.nn.modules.loss import _WeightedLoss
 # from transformers import AutoModel
-# from embedding.loss import FocalLoss, MultiFocalLoss
+# from embedding.loss import FocalLoss, MultiFocalLoss, DiceLoss
 #
 #
 # class WordAttention(nn.Module):
@@ -466,7 +488,7 @@ github  3.28
 #             u_w = self.att_scorer(u_i).squeeze(-1).view(sentence_reps.size(0), sentence_reps.size(1))
 #             val = u_w.max()
 #             att_scores = torch.exp(u_w - val)
-#             # att_scores = att_scores / torch.sum(att_scores, dim=1, keepdim=True)
+#             att_scores = att_scores / torch.sum(att_scores, dim=1, keepdim=True)
 #             att_scores = F.softmax(att_scores.masked_fill((~sentence_mask).bool(), -1e4), dim=-1)
 #             result = torch.bmm(att_scores.unsqueeze(1), sentence_reps).squeeze(1)
 #             return result  # * NEI_mask
@@ -481,8 +503,8 @@ github  3.28
 #         self.dense = nn.Linear(hidden_size, hidden_size, bias=True)
 #         self.dropout = nn.Dropout(dropout)
 #         self.classifier = nn.Linear(hidden_size, num_labels, bias=True)
-#         self.num_channels = hidden_size // 3
-#         self.kernel_size = [2, 3, 4]
+#         self.num_channels = hidden_size // 4
+#         self.kernel_size = [2, 3, 4, 5]
 #         self.max_position_embeddings = 512
 #
 #         self.conv1 = nn.Conv2d(in_channels=1, out_channels=self.num_channels,
@@ -491,14 +513,16 @@ github  3.28
 #                                kernel_size=(self.kernel_size[1], hidden_size))
 #         self.conv3 = nn.Conv2d(in_channels=1, out_channels=self.num_channels,
 #                                kernel_size=(self.kernel_size[2], hidden_size))
+#         self.conv4 = nn.Conv2d(in_channels=1, out_channels=self.num_channels,
+#                                kernel_size=(self.kernel_size[3], hidden_size))
 #
 #         self.pool1 = nn.MaxPool1d(kernel_size=self.max_position_embeddings - 2 + 1)
 #         self.pool2 = nn.MaxPool1d(kernel_size=self.max_position_embeddings - 3 + 1)
 #         self.pool3 = nn.MaxPool1d(kernel_size=self.max_position_embeddings - 4 + 1)
 #
-#         self.attention_size = 16
-#         self.w_omega = Variable(torch.zeros(hidden_size, self.attention_size).cuda())
-#         self.u_omega = Variable(torch.zeros(self.attention_size).cuda())
+#         # self.attention_size = 16
+#         # self.w_omega = Variable(torch.zeros(hidden_size, self.attention_size).cuda())
+#         # self.u_omega = Variable(torch.zeros(self.attention_size).cuda())
 #         # self.apply(self.init_bert_weights)
 #
 #     def conv_pooling(self, x, conv):
@@ -513,7 +537,8 @@ github  3.28
 #         h1 = self.conv_pooling(pooled_output, self.conv1)
 #         h2 = self.conv_pooling(pooled_output, self.conv2)
 #         h3 = self.conv_pooling(pooled_output, self.conv3)
-#         pooled_output = torch.cat([h1, h2, h3], 1)
+#         h4 = self.conv_pooling(pooled_output, self.conv4)
+#         pooled_output = torch.cat([h1, h2, h3, h4], 1)
 #         pooled_output = self.dropout(pooled_output)
 #         # print(pooled_output.size())
 #         # output = self.attention(pooled_output)
@@ -613,7 +638,8 @@ github  3.28
 #         self.abstract_criterion = nn.CrossEntropyLoss()
 #         # self.abstract_criterion = MultiFocalLoss(3, alpha=[0.1, 0.7, 0.2])
 #         # self.rationale_criterion = nn.CrossEntropyLoss(ignore_index=2)
-#         self.rationale_criterion = FocalLoss(weight=torch.tensor([0.25, 0.75]), reduction='mean')
+#         self.rationale_criterion = DiceLoss(with_logits=True, smooth=1, ohem_ratio=0.1, alpha=0.01, reduction='mean',
+#                                             square_denominator=True)
 #         self.similarity_criterion = nn.CrossEntropyLoss()
 #         self.dropout = args.dropout
 #         self.hidden_dim = args.hidden_dim

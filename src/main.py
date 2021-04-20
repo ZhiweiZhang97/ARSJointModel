@@ -19,9 +19,9 @@ def parse_args():
     parser.add_argument('--corpus_path', type=str, default='../data/corpus.jsonl',
                         help='The corpus of documents.')
     parser.add_argument('--claim_train_path', type=str,
-                        default='../data/claims_train_retrieved.jsonl')
+                        default='../data/claims_train_retrieved_tfidf.jsonl')
     parser.add_argument('--claim_dev_path', type=str,
-                        default='../data/claims_dev_retrieved.jsonl')
+                        default='../data/claims_dev_retrieved_tfidf.jsonl')
     parser.add_argument('--claim_test_path', type=str,
                         default='../data/claims_test.jsonl')
     parser.add_argument('--gold', type=str, default='../data/claims_dev.jsonl')
@@ -48,8 +48,8 @@ def parse_args():
                         help='The batch size to send through GPU')
     parser.add_argument('--batch-size-accumulated', type=int, default=256,
                         help='The batch size for each gradient update')
-    parser.add_argument('--lr-base', type=float, default=1e-5)
-    parser.add_argument('--lr-linear', type=float, default=5e-6)
+    parser.add_argument('--bert-lr', type=float, default=1e-5)
+    parser.add_argument('--lr', type=float, default=5e-6)
     parser.add_argument('--mode', type=str, default='claim_and_rationale',
                         choices=['claim_and_rationale', 'only_claim', 'only_rationale'])
     parser.add_argument('--filter', type=str, default='structured',
@@ -78,10 +78,7 @@ def parse_args():
 
 def printf(args):
     for k in list(vars(args).keys()):
-        if k == 'epochs':
-            print('%s: %s' % (k, vars(args)[k]))
-        if k == 'model':
-            print('%s: %s' % (k, vars(args)[k]))
+        print('%s: %s' % (k, vars(args)[k]))
     print('-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-')
 
 
@@ -103,30 +100,30 @@ def main():
     else:
         claim_train_path = args.claim_train_path
         claim_dev_path = args.claim_dev_path
-        claim_test_path = args.claim_test_path
+        claim_test_path = args.claim_dev_path
 
     # args.model = 'allenai/scibert_scivocab_cased'
     # args.model = 'model/SciBert_checkpoint'
     args.model = 'dmis-lab/biobert-base-cased-v1.1-mnli'
     # args.model = 'roberta-large'
     args.epochs = 20
-    args.lr_base = 1e-5
-    args.lr_linear = 5e-6
+    args.bert_lr = 1e-5
+    args.lr = 5e-6
     args.batch_size_gpu = 8
     args.dropout = 0
     args.k = 30
     args.hidden_dim = 768  # 768
     printf(args)
+    k_train = 12
     tokenizer = AutoTokenizer.from_pretrained(args.model)
-    train_set = SciFactJointDataset(args.corpus_path, claim_train_path, sep_token=tokenizer.sep_token, k=12)
-    dev_set = SciFactJointDataset(args.corpus_path, claim_dev_path, sep_token=tokenizer.sep_token, k=12)
+    train_set = SciFactJointDataset(args.corpus_path, claim_train_path, sep_token=tokenizer.sep_token, k=k_train)
+    dev_set = SciFactJointDataset(args.corpus_path, claim_dev_path, sep_token=tokenizer.sep_token, k=k_train)
     test_set = SciFactJointDataset(args.corpus_path, claim_test_path,
                                    sep_token=tokenizer.sep_token, k=args.k, train=False)
     # print(test_set.samples[0])
     checkpoint = train_base(train_set, dev_set, args)
     # checkpoint = 'model/JointModel.model'
-    # checkpoint = 'tmp-runs/161769069367461-abstract_f1-9804-rationale_f1-6108.model'
-    # checkpoint = 'tmp-runs/161778744561827-abstract_f1-9918-rationale_f1-6435.model'
+    # checkpoint = 'tmp-runs/161875106212282-abstract_f1-6318-rationale_f1-6319.model'
     # print(checkpoint)
     abstract_result, rationale_result = get_predictions(args, test_set, checkpoint)
     rationales, labels = predictions2jsonl(test_set.samples, abstract_result, rationale_result)

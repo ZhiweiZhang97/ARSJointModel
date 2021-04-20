@@ -345,6 +345,18 @@ def clean_url(word):
     return word
 
 
+def clean_num(word):
+    # check if the word contain number and no letters
+    if any(char.isdigit() for char in word):
+        try:
+            num = float(word.replace(',', ''))
+            return '@'
+        except:
+            if not any(char.isalpha() for char in word):
+                return '@'
+    return word
+
+
 def clean_invalid_sentence(abstract):
     sentences = []
     for sen in abstract:
@@ -375,7 +387,7 @@ def down_sample(abstract_sentences, evidence_sentence_idx, label, p, sep_token):
 
 
 class SciFactJointDataset(Dataset):
-    def __init__(self, corpus: str, claims: str, sep_token="</s>", k=0, train=True):
+    def __init__(self, corpus: str, claims: str, sep_token="</s>", k=0, train=True, down_sampling=True):
         # sep_token = ''
         self.rationale_label = {'NOT_ENOUGH_INFO': 0, 'RATIONALE': 1}
         self.rev_rationale_label = {i: l for (l, i) in self.rationale_label.items()}
@@ -401,8 +413,6 @@ class SciFactJointDataset(Dataset):
             for doc_id in all_candidates:
                 doc = corpus[int(doc_id)]
                 # doc_id = str(doc_id)
-                if "discourse" in doc:
-                    print(doc['discourse'])
                 abstract_sentences = [sentence.strip() for sentence in doc['abstract']]
                 abstract_sentences = clean_invalid_sentence(abstract_sentences)  # #
                 if train:
@@ -418,41 +428,42 @@ class SciFactJointDataset(Dataset):
                             label = 'CONTRADICT'
                         else:
                             label = 'NOT_ENOUGH_INFO'
-                        # down samples. Augment the data set, extract sentences from the evidence abstract.
-                        kept_sentences, kept_evidence_idx, kept_label = down_sample(abstract_sentences,
-                                                                                    evidence_sentence_idx,
-                                                                                    label, 0.5, sep_token)
-                        if kept_sentences is not None:
-                            concat_sentences = (' ' + sep_token + ' ').join(kept_sentences)
-                            concat_sentences = clean_url(concat_sentences)  # clean the url in the sentence
-                            rationale_label_str = ''.join(
-                                ['1' if i in kept_evidence_idx else '0' for i in range(len(kept_sentences))])
-                            # concat_sentences = '@ ' + sep_token + ' ' + concat_sentences
-                            # rationale_label_str = "1" + rationale_label_str
 
-                            self.samples.append({
-                                'claim': claim['claim'],
-                                'claim_id': claim['id'],
-                                'doc_id': doc['doc_id'],
-                                'abstract': concat_sentences,
-                                'paragraph': ' '.join(kept_sentences),
-                                'sentence_label': rationale_label_str,
-                                'abstract_label': self.abstract_label[kept_label],
-                                'sim_label': 1 if doc['doc_id'] in claim['cited_doc_ids'] else 0,
-                                # 'doc_length': len(abstract_sentences),
-                                # 'sentence_length': [[len(sen.split(' ')) for sen in abstract_sentences]]
-                            })
+                        if down_sampling:
+                            # down samples. Augment the data set, extract sentences from the evidence abstract.
+                            kept_sentences, kept_evidence_idx, kept_label = down_sample(abstract_sentences,
+                                                                                        evidence_sentence_idx,
+                                                                                        label, 0.5, sep_token)
+                            if kept_sentences is not None:
+                                concat_sentences = (' ' + sep_token + ' ').join(kept_sentences)
+                                concat_sentences = clean_num(clean_url(concat_sentences))  # clean the url in the sentence
+                                rationale_label_str = ''.join(
+                                    ['1' if i in kept_evidence_idx else '0' for i in range(len(kept_sentences))])
+                                # concat_sentences = doc['title'] + ' ' + sep_token + ' ' + concat_sentences
+                                # rationale_label_str = "1" + rationale_label_str
+
+                                self.samples.append({
+                                    'claim': claim['claim'],
+                                    'claim_id': claim['id'],
+                                    'doc_id': doc['doc_id'],
+                                    'abstract': concat_sentences,
+                                    # 'paragraph': ' '.join(kept_sentences),
+                                    'title': ' ' + sep_token + ' '.join(doc['title']),
+                                    'sentence_label': rationale_label_str,
+                                    'abstract_label': self.abstract_label[kept_label],
+                                    'sim_label': 1 if doc['doc_id'] in claim['cited_doc_ids'] else 0,
+                                })
 
                     else:  # cited doc is not evidence
                         evidence_sentence_idx = {}
                         label = 'NOT_ENOUGH_INFO'
                     concat_sentences = (' ' + sep_token +
                                         ' ').join(abstract_sentences)  # concat sentences in the abstract
-                    concat_sentences = clean_url(concat_sentences)  # clean the url in the sentence
+                    concat_sentences = clean_num(clean_url(concat_sentences))  # clean the url in the sentence
                     rationale_label_str = ''.join(
                         ['1' if i in evidence_sentence_idx else '0' for i in range(len(abstract_sentences))])
                     # print(rationale_label_str)
-                    # concat_sentences = '@ ' + sep_token + ' ' + concat_sentences
+                    # concat_sentences = doc['title'] + ' ' + sep_token + ' ' + concat_sentences
                     # rationale_label_str = "1" + rationale_label_str
 
                     self.samples.append({
@@ -460,26 +471,44 @@ class SciFactJointDataset(Dataset):
                         'claim_id': claim['id'],
                         'doc_id': doc['doc_id'],
                         'abstract': concat_sentences,
-                        'paragraph': ' '.join(abstract_sentences),
+                        # 'paragraph': ' '.join(abstract_sentences),
+                        'title': ' ' + sep_token + ' '.join(doc['title']),
                         'sentence_label': rationale_label_str,
                         'abstract_label': self.abstract_label[label],
                         'sim_label': 1 if doc['doc_id'] in claim['cited_doc_ids'] else 0,
-                        # 'doc_length': len(abstract_sentences),
-                        # 'sentence_length': [[len(sen.split(' ')) for sen in abstract_sentences]]
                     })
                 else:
                     concat_sentences = (' ' + sep_token + ' ').join(abstract_sentences)
-                    # concat_sentences = '@ ' + sep_token + ' ' + concat_sentences
+                    # concat_sentences = doc['title'] + ' ' + sep_token + ' ' + concat_sentences
 
                     self.samples.append({
                         'claim': claim['claim'],
                         'claim_id': claim['id'],
                         'doc_id': doc['doc_id'],
                         'abstract': concat_sentences,
-                        'paragraph': ' '.join(abstract_sentences),
-                        # 'doc_length': len(abstract_sentences),
-                        # 'sentence_length': [[len(sen.split(' ')) for sen in abstract_sentences]]
+                        # 'paragraph': ' '.join(abstract_sentences),
+                        'title': ' ' + sep_token + ' '.join(doc['title']),
                     })
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        return self.samples[idx]
+
+
+class SciFactJointPredictionData(Dataset):
+    def __init__(self, corpus: str, claims: str, sep_token="</s>"):
+        # sep_token = ''
+        self.rationale_label = {'NOT_ENOUGH_INFO': 0, 'RATIONALE': 1}
+        self.rev_rationale_label = {i: l for (l, i) in self.rationale_label.items()}
+        # self.abstract_label = {'CONTRADICT': 0, 'NOT_ENOUGH_INFO': 1, 'SUPPORT': 2}
+        self.abstract_label = {'NOT_ENOUGH_INFO': 0, 'CONTRADICT': 1,  'SUPPORT': 2}
+        self.rev_abstract_label = {i: l for (l, i) in self.abstract_label.items()}
+
+        self.samples = []
+        self.excluded_pairs = []
+        corpus = {doc['doc_id']: doc for doc in jsonlines.open(corpus)}
 
     def __len__(self):
         return len(self.samples)

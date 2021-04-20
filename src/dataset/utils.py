@@ -243,8 +243,8 @@ def split_dataset(train_data):
     '''
     claims_train_data = [claim for claim in jsonlines.open(train_data)]
     train_data, dev_data = train_test_split(claims_train_data, test_size=0.2)
-    output_train = jsonlines.open('/home/g19tka09/Documents/SCIVER/data/train_data.jsonl', 'w')
-    output_dev = jsonlines.open('/home/g19tka09/Documents/SCIVER/data/dev_data.jsonl', 'w')
+    output_train = jsonlines.open('/home/g19tka09/Documents/SCIVER/data/train_data_Bio.jsonl', 'w')
+    output_dev = jsonlines.open('/home/g19tka09/Documents/SCIVER/data/dev_data_Bio.jsonl', 'w')
     for data in train_data:
         output_train.write({
             'id': data['id'],
@@ -261,3 +261,4 @@ def split_dataset(train_data):
             'cited_doc_ids': data['cited_doc_ids'],
             'doc_ids': data['doc_ids']
         })
+    print('over')

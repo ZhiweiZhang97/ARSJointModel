@@ -104,7 +104,7 @@ def evaluate_label_predictions(args, label_results):
     print(f'Macro F1:          {f1_score(true_labels, pred_labels, average="macro").round(4)}')
     print(f'Macro F1 w/o NEI:  {f1_score(true_labels, pred_labels, average="macro", labels=[0, 2]).round(4)}')
     print()
-    print('                   [C      N      S     ]')  # C: CONTRADICT; N: NOT_ENOUGH_INFO; S: SUPPORT
+    print('                   [N      C      S     ]')  # C: CONTRADICT; N: NOT_ENOUGH_INFO; S: SUPPORT
     # print('                   [C      S     ]')
     print(f'F1:                {f1_score(true_labels, pred_labels, average=None, labels=[0, 1, 2]).round(4)}')
     print(f'Precision:         {precision_score(true_labels, pred_labels, average=None, labels=[0, 1, 2]).round(4)}')
@@ -160,13 +160,13 @@ def evaluation_joint(model, dataset, args, tokenizer, mode='rationale&label'):
             # encoded = {key: tensor.to(device) for key, tensor in encoded.items()}
             transformation_indices = token_idx_by_sentence(encoded_dict["input_ids"], tokenizer.sep_token_id,
                                                            args.model)
-            match_indices = token_idx_by_sentence(encoded_dict["input_ids"], tokenizer.sep_token_id,
-                                                  args.model, match=True)
+            # match_indices = token_idx_by_sentence(encoded_dict["input_ids"], tokenizer.sep_token_id,
+            #                                       args.model, match=True)
             encoded_dict = {key: tensor.to(device) for key, tensor in encoded_dict.items()}
             transformation_indices = [tensor.to(device) for tensor in transformation_indices]
-            match_indices = [tensor.to(device) for tensor in match_indices]
-            _, rationale_label = get_rationale_label(batch["sentence_label"], padding_idx=2)
-            abstract_out, rationale_out = model(encoded_dict, transformation_indices, match_indices)
+            # match_indices = [tensor.to(device) for tensor in match_indices]
+            padded_label, rationale_label = get_rationale_label(batch["sentence_label"], padding_idx=2)
+            abstract_out, rationale_out = model(encoded_dict, transformation_indices)
             # abstract_out = torch.argmax(abstract_score.cpu(), dim=-1).detach().numpy().tolist()
             # rationale_out = torch.argmax(rationale_score.cpu(), dim=-1).detach().numpy().tolist()
 
@@ -177,27 +177,26 @@ def evaluation_joint(model, dataset, args, tokenizer, mode='rationale&label'):
             rationale_output.extend(rationale_out)
     if mode == 'label':
         return {
-            'abstract_macro_f1': f1_score(abstract_targets, abstract_outputs, zero_division=0, average='micro'),
-            'abstract_f1': tuple(f1_score(abstract_targets, abstract_outputs, zero_division=0, average=None)),
-            'abstract_precision': precision_score(abstract_targets, abstract_outputs, zero_division=0, average='micro'),
-            'abstract_recall': recall_score(abstract_targets, abstract_outputs, zero_division=0, average='micro'),
+            'f1': f1_score(abstract_targets, abstract_outputs, zero_division=0, average='micro', labels=[1, 2]),
+            'p': precision_score(abstract_targets, abstract_outputs, zero_division=0, average='micro', labels=[1, 2]),
+            'r': recall_score(abstract_targets, abstract_outputs, zero_division=0, average='micro', labels=[1, 2]),
         }
     elif mode == 'rationale':
         return {
-            'rationale_f1': f1_score(flatten(rationale_targets), flatten(rationale_output), zero_division=0),
-            'rationale_precision': precision_score(flatten(rationale_targets), flatten(rationale_output), zero_division=0),
-            'rationale_recall': recall_score(flatten(rationale_targets), flatten(rationale_output), zero_division=0)
+            'f1': f1_score(flatten(rationale_targets), flatten(rationale_output), zero_division=0),
+            'p': precision_score(flatten(rationale_targets), flatten(rationale_output), zero_division=0),
+            'r': recall_score(flatten(rationale_targets), flatten(rationale_output), zero_division=0)
         }
     else:
         return {
-            'abstract_macro_f1': f1_score(abstract_targets, abstract_outputs, zero_division=0, average='micro'),
-            'abstract_f1': tuple(f1_score(abstract_targets, abstract_outputs, zero_division=0, average=None)),
-            'abstract_precision': precision_score(abstract_targets, abstract_outputs, zero_division=0, average='micro'),
-            'abstract_recall': recall_score(abstract_targets, abstract_outputs, zero_division=0, average='micro'),
+            'f1': f1_score(abstract_targets, abstract_outputs, zero_division=0, average='micro', labels=[1, 2]),
+            # 'abstract_f1': tuple(f1_score(abstract_targets, abstract_outputs, zero_division=0, average=None)),
+            'p': precision_score(abstract_targets, abstract_outputs, zero_division=0, average='micro', labels=[1, 2]),
+            'r': recall_score(abstract_targets, abstract_outputs, zero_division=0, average='micro', labels=[1, 2]),
         }, {
-            'rationale_f1': f1_score(flatten(rationale_targets), flatten(rationale_output), zero_division=0),
-            'rationale_precision': precision_score(flatten(rationale_targets), flatten(rationale_output), zero_division=0),
-            'rationale_recall': recall_score(flatten(rationale_targets), flatten(rationale_output), zero_division=0)
+            'f1': f1_score(flatten(rationale_targets), flatten(rationale_output), zero_division=0),
+            'p': precision_score(flatten(rationale_targets), flatten(rationale_output), zero_division=0),
+            'r': recall_score(flatten(rationale_targets), flatten(rationale_output), zero_division=0)
         }
 
 
@@ -213,16 +212,21 @@ def evaluation_abstract_retrieval(model, dataset, args, tokenizer):
             # encoded = {key: tensor.to(device) for key, tensor in encoded.items()}
             transformation_indices = token_idx_by_sentence(encoded_dict["input_ids"], tokenizer.sep_token_id,
                                                            args.model)
+            # match_indices = token_idx_by_sentence(encoded_dict["input_ids"], tokenizer.sep_token_id,
+            #                                       args.model, match=True)
             encoded_dict = {key: tensor.to(device) for key, tensor in encoded_dict.items()}
             transformation_indices = [tensor.to(device) for tensor in transformation_indices]
-            retrieval_out = model(encoded_dict, transformation_indices, retrieval_out=True)
+            # match_indices = [tensor.to(device) for tensor in match_indices]
+            retrieval_out, _ = model(encoded_dict, transformation_indices,
+                                     retrieval_label=batch['sim_label'].to(device), retrieval_only=True)
             # abstract_out = torch.argmax(abstract_score.cpu(), dim=-1).detach().numpy().tolist()
             # rationale_out = torch.argmax(rationale_score.cpu(), dim=-1).detach().numpy().tolist()
 
             abstract_targets.extend(batch['sim_label'])
             abstract_outputs.extend(retrieval_out)
     return {
-            'abstract_f1': f1_score(abstract_targets, abstract_outputs, zero_division=0, average='micro'),
+            'abstract_micro_f1': f1_score(abstract_targets, abstract_outputs, zero_division=0, average='micro'),
+            'abstract_f1': tuple(f1_score(abstract_targets, abstract_outputs, zero_division=0, average=None)),
             'abstract_precision': precision_score(abstract_targets, abstract_outputs, zero_division=0, average='micro'),
             'abstract_recall': recall_score(abstract_targets, abstract_outputs, zero_division=0, average='micro'),
         }

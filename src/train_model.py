@@ -16,7 +16,12 @@ from utils import token_idx_by_sentence, get_rationale_label
 
 
 def schedule_sample_p(epoch, total):
-    return np.sin(0.5 * np.pi * epoch / (total-1))
+    if epoch == total-1:
+        abstract_sample = 1.0
+    else:
+        abstract_sample = np.tanh(0.5 * np.pi * epoch / (total-1-epoch))
+    rationale_sample = np.sin(0.5 * np.pi * epoch / (total-1))
+    return abstract_sample, rationale_sample
 
 
 def train(train_set, dev_set, args):
@@ -192,18 +197,11 @@ def train_base(train_set, dev_set, args):
     # model = JointModelClassifier(args)
     model = JointModelClassifier(args)
     model = model.to(device)
-    optimizer = torch.optim.Adam([
-            {'params': model.bert.parameters(), 'lr': args.lr_base},
-            {'params': model.sentence_attention.parameters(), 'lr': args.lr_linear},
-            {'params': model.word_attention.parameters(), 'lr': args.lr_linear},
-            {'params': model.rationale_linear.parameters(), 'lr': args.lr_linear},
-            {'params': model.abstract_linear.parameters(), 'lr': args.lr_linear},
-            {'params': model.rationale_criterion.parameters(), 'lr': args.lr_linear},
-            {'params': model.abstract_criterion.parameters(), 'lr': args.lr_linear},
-            {'params': model.abstract_retrieval.parameters(), 'lr': args.lr_linear},
-            {'params': model.retrieval_criterion.parameters(), 'lr': args.lr_linear},
-            {'params': model.conv_layer.parameters(), 'lr': 1e-3},
-         ])
+    parameters = [{'params': model.bert.parameters(), 'lr': args.bert_lr},
+                  {'params': model.abstract_retrieval.parameters(), 'lr': 5e-6}]
+    for module in model.extra_modules:
+        parameters.append({'params': module.parameters(), 'lr': args.lr})
+    optimizer = torch.optim.Adam(parameters)
     scheduler = get_cosine_schedule_with_warmup(optimizer, 0, args.epochs)
     """
     """
@@ -212,8 +210,34 @@ def train_base(train_set, dev_set, args):
     # best_model = model
     model.train()
     checkpoint = os.path.join(args.save, f'JointModel.model')
-    for epoch in range(args.epochs + 10):
-        sample_p = schedule_sample_p(epoch, args.epochs + 10)
+    # for epoch in range(10):
+    #     model.train()  # cudnn RNN backward can only be called in training mode
+    #     t = tqdm(DataLoader(train_set, batch_size=1, shuffle=True))
+    #     for i, batch in enumerate(t):
+    #         encoded_dict = encode_paragraph(tokenizer, batch['claim'], batch['abstract'])
+    #         transformation_indices = token_idx_by_sentence(encoded_dict["input_ids"], tokenizer.sep_token_id,
+    #                                                        args.model)
+    #         match_indices = token_idx_by_sentence(encoded_dict["input_ids"], tokenizer.sep_token_id,
+    #                                               args.model, match=True)
+    #         encoded_dict = {key: tensor.to(device) for key, tensor in encoded_dict.items()}
+    #         transformation_indices = [tensor.to(device) for tensor in transformation_indices]
+    #         match_indices = [tensor.to(device) for tensor in match_indices]
+    #         _, retrieval_loss = model(encoded_dict, transformation_indices, match_indices,
+    #                                   retrieval_label=batch['sim_label'].to(device), retrieval_only=True)
+    #         loss = retrieval_loss
+    #         loss.backward()
+    #         if (i + 1) % (args.batch_size_accumulated // args.batch_size_gpu) == 0:
+    #             optimizer.step()
+    #             optimizer.zero_grad()
+    #             t.set_description(f'Epoch {epoch}, iter {i}, abstract retrieval loss: {round(loss.item(), 4)}')
+    #     scheduler.step()
+    #     train_score = evaluation_abstract_retrieval(model, train_set, args, tokenizer)
+    #     print(f'Epoch {epoch} train retrieval score:', train_score)
+    #     dev_score = evaluation_abstract_retrieval(model, dev_set, args, tokenizer)
+    #     print(f'Epoch {epoch} dev retrieval score:', dev_score)
+
+    for epoch in range(args.epochs):
+        abstract_sample, rationale_sample = schedule_sample_p(epoch, args.epochs + 10)
         model.train()  # cudnn RNN backward can only be called in training mode
         t = tqdm(DataLoader(train_set, batch_size=1, shuffle=True))
         for i, batch in enumerate(t):
@@ -222,29 +246,18 @@ def train_base(train_set, dev_set, args):
             # encoded = {key: tensor.to(device) for key, tensor in encoded.items()}
             transformation_indices = token_idx_by_sentence(encoded_dict["input_ids"], tokenizer.sep_token_id,
                                                            args.model)
-            match_indices = token_idx_by_sentence(encoded_dict["input_ids"], tokenizer.sep_token_id,
-                                                  args.model, match=True)
+            # match_indices = token_idx_by_sentence(encoded_dict["input_ids"], tokenizer.sep_token_id,
+            #                                       args.model, match=True)
             encoded_dict = {key: tensor.to(device) for key, tensor in encoded_dict.items()}
             transformation_indices = [tensor.to(device) for tensor in transformation_indices]
-            match_indices = [tensor.to(device) for tensor in match_indices]
+            # match_indices = [tensor.to(device) for tensor in match_indices]
             padded_label, rationale_label = get_rationale_label(batch["sentence_label"], padding_idx=2)
-            # sentence_length = torch.tensor([len for len in batch['sentence_length']])
-            # if epoch < args.epochs // 2:
-            #     _, _, _, _, retrieval_loss = model(encoded_dict, transformation_indices,
-            #                                        sim_label=batch['sim_label'].to(device),
-            #                                        train=True)
-            #     loss = retrieval_loss
-            #     loss.backward()
-            #     if (i + 1) % (args.batch_size_accumulated // args.batch_size_gpu) == 0:
-            #         optimizer.step()
-            #         optimizer.zero_grad()
-            #         t.set_description(f'Epoch {epoch}, iter {i}, abstract retrieval loss: {round(loss.item(), 4)}')
-            # else:
-            _, _, abstract_loss, rationale_loss, sim_loss = model(encoded_dict, transformation_indices, match_indices,
+            _, _, abstract_loss, rationale_loss, sim_loss = model(encoded_dict, transformation_indices,
                                                                   abstract_label=batch['abstract_label'].to(device),
                                                                   rationale_label=padded_label.to(device),
-                                                                  sim_label=batch['sim_label'].to(device),
-                                                                  train=True, sample_p=sample_p)
+                                                                  retrieval_label=batch['sim_label'].to(device),
+                                                                  train=True, abstract_sample=abstract_sample,
+                                                                  rationale_sample=rationale_sample)
 
             # print('label. ', '\n', 'Truth: ', batch["abstract_label"], '\n', 'Pred: ', abstract_out)
             # print(200 * '*')
@@ -252,9 +265,9 @@ def train_base(train_set, dev_set, args):
             # print(200 * '*')
             # print('similarity. ', '\n', 'Truth: ', batch['sim_label'], '\n', 'Pred: ', sim_out)
             # print(100 * '-*')
-            rationale_loss *= 5
-            abstract_loss *= 3
-            sim_loss *= 2
+            rationale_loss *= 12
+            abstract_loss *= 2
+            sim_loss *= 1
             loss = abstract_loss + rationale_loss + sim_loss
             loss.backward()
             if (i + 1) % (args.batch_size_accumulated // args.batch_size_gpu) == 0:
@@ -263,7 +276,7 @@ def train_base(train_set, dev_set, args):
                 t.set_description(f'Epoch {epoch}, iter {i}, loss: {round(loss.item(), 4)},'
                                   f' abstract loss: {round(abstract_loss.item(), 4)},'
                                   f' rationale loss: {round(rationale_loss.item(), 4)},'
-                                  f' similarity loss: {round(sim_loss.item(), 4)}')
+                                  f' retrieval loss: {round(sim_loss.item(), 4)}')
         scheduler.step()
         # if epoch < args.epochs // 2:
         #     train_score = evaluation_abstract_retrieval(model, train_set, args, tokenizer)
@@ -279,8 +292,8 @@ def train_base(train_set, dev_set, args):
               f'Epoch {epoch} dev rationale score:', dev_score[1])
         # save
         save_path = os.path.join(tmp_dir, str(int(time.time() * 1e5))
-                                 + f'-abstract_f1-{int(dev_score[0]["abstract_f1"][1]*1e4)}'
-                                 + f'-rationale_f1-{int(dev_score[1]["rationale_f1"]*1e4)}.model')
+                                 + f'-abstract_f1-{int(dev_score[0]["f1"]*1e4)}'
+                                 + f'-rationale_f1-{int(dev_score[1]["f1"]*1e4)}.model')
         torch.save(model.state_dict(), save_path)
         # if dev_score[0]['abstract_f1'][1] >= abstract_best_f1 and dev_score[1]['rationale_f1'] >= rationale_best_f1:
         #     abstract_best_f1 = dev_score[0]['abstract_f1'][1]

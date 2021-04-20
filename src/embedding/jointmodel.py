@@ -2,13 +2,11 @@ import torch
 
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional
 import numpy as np
 
 from torch.autograd import Variable
 from transformers import AutoModel
 from embedding.loss import FocalLoss, MultiFocalLoss, DiceLoss
-from embedding.ABCNN_github import ABCNN, weights_init
 
 
 def get_index(mask):
@@ -41,9 +39,9 @@ def get_index(mask):
 
 
 class TimeDistributed(nn.Module):
-    def __init__(self, module, batch_first=False):
+    def __init__(self, input_size, output_size, batch_first=False):
         super(TimeDistributed, self).__init__()
-        self.module = module
+        self.module = nn.Linear(input_size, output_size, bias=True)
         self.batch_first = batch_first
 
     def forward(self, x):
@@ -127,31 +125,30 @@ class LSTM(nn.Module):
 
 class WordAttention(nn.Module):
     """
-    word-level attention
+    word-level attention. sentence representation for rationale selection.
     """
     def __init__(self, input_size, output_size, dropout=0.1):
         super(WordAttention, self).__init__()
-        self.word_attention = nn.Linear(input_size, output_size, bias=True)
+        self.word_attention = TimeDistributed(input_size, output_size)
         self.dropout = nn.Dropout(dropout)
-        self.att_scorer = nn.Linear(output_size, 1, bias=True)
+        self.att_scorer = TimeDistributed(output_size, 1)
 
     def forward(self, x, token_mask, valid_abstract):
-        # batch_indices, indices_by_batch, token_mask = transformation_indices
-        # x = self.Lstm(x).permute(1, 0, 2)  # [batch_indices, sequence_len, hidden_dim]
-        # x = x[batch_indices, indices_by_batch, :]  # [batch_size, num_sentence, num_token, hidden_dim]
         valid_abstract = valid_abstract.repeat(token_mask.shape[1], 1).transpose(0, 1).unsqueeze(2)
         att_s = self.dropout(x.view(-1, x.size(-1)))
         att_s = self.word_attention(att_s)
-        att_s = self.dropout(torch.tanh(att_s))  # [batch_size * num_sentence * num_token, hidden_dim]
+        att_s = self.dropout(torch.tanh(att_s))  # [batch_size * num_sentence * num_token, hidden_dim]  # nan
         raw_att_scores = self.att_scorer(att_s).squeeze(-1).view(x.size(0), x.size(1),
                                                                  x.size(2))  # [batch_size, num_sentence, num_token]
-        # raw_att_scores = torch.exp(raw_att_scores - raw_att_scores.max())  #
-        word_mask = torch.logical_and((1 - token_mask).bool(), ~valid_abstract)
-        # word_mask = (1 - token_mask).bool()
-        att_scores = F.softmax(raw_att_scores.masked_fill(word_mask, float('-inf')), dim=-1)
+        raw_att_scores = raw_att_scores.masked_fill(~valid_abstract, -1e4)
+        u_w = raw_att_scores.masked_fill((1-token_mask).bool(), float('-inf'))
+        # val = u_w.max()
+        # att_scores = torch.exp(u_w - val)
+        # att_scores = u_w
+        # att_scores = att_scores / torch.sum(att_scores, dim=1, keepdim=True)
+        att_scores = torch.softmax(u_w, dim=-1)
         att_scores = torch.where(torch.isnan(att_scores), torch.zeros_like(att_scores),
                                  att_scores)  # replace NaN with 0
-        # att_scores = att_scores / torch.sum(att_scores, dim=1, keepdim=True)
         # batch_att_scores: word attention scores. [batch_size * num_sentence, num_token]
         batch_att_scores = att_scores.view(-1, att_scores.size(-1))  # word attention weight matrix.
         # out:  # sentence_representations. [batch_size, num_sentence, hidden_dim]
@@ -163,43 +160,35 @@ class WordAttention(nn.Module):
 
 class SentenceAttention(nn.Module):
     """
-    sentence-level attention
+    sentence-level attention. paragraph representation for label prediction.
     """
     def __init__(self, input_size, output_size, dropout=0.1):
         super(SentenceAttention, self).__init__()
-        self.sentence_attention = nn.Linear(input_size, output_size, bias=False)
+        self.sentence_attention = TimeDistributed(input_size, output_size)
         self.activation = torch.tanh
         self.dropout = nn.Dropout(dropout)
-        self.att_scorer = nn.Linear(output_size, 1, bias=True)
+        self.att_scorer = TimeDistributed(output_size, 1)
         self.contextualized = False
         self.hidden_size = input_size // 2
         self.lstm = nn.LSTM(input_size, self.hidden_size, 1, dropout=dropout, bidirectional=True)
 
     def forward(self, sentence_reps, sentence_mask, valid_scores):
-        # valid_abstract = valid_abstract.repeat(sentence_mask.shape[1], 1).transpose(0, 1)
         sentence_mask = torch.logical_and(sentence_mask, valid_scores)
-        # Force those sentence representations in paragraph without rationale to be 0.
-        # NEI_mask = (torch.sum(sentence_mask, axis=1) > 0).long().unsqueeze(-1).expand(-1, sentence_reps.size(-1))
         h_0 = Variable(torch.zeros(2, sentence_reps.size(1), self.hidden_size).cuda())
         c_0 = Variable(torch.zeros(2, sentence_reps.size(1), self.hidden_size).cuda())
         # print(sentence_reps.shape)
         sent_embeddings = self.dropout(sentence_reps)
         sentence_embedding, (_, _) = self.lstm(sent_embeddings, (h_0, c_0))
-        # if sentence_reps.size(0) > 0:
         att_s = self.sentence_attention(sentence_embedding)  # [batch_size, num_sentence, hidden_size,]
         u_i = self.dropout(torch.tanh(att_s))  # u_i = tanh(W_s * h_i + b). [batch_size, num_sentence, hidden_size,]
         u_w = self.att_scorer(u_i).squeeze(-1).view(sentence_reps.size(0), sentence_reps.size(1))  # [batch_size, num_sentence]
-        # sentence_score: sentence attention weight matrix.
-        # sentence_score = torch.exp(u_w - u_w.max()) / torch.sum(torch.exp(u_w - u_w.max()), dim=1, keepdim=True)
         u_w = u_w.masked_fill((~sentence_mask).bool(), -1e4)
-        val = u_w.max()
+        # val = u_w.max()
+        # # att_scores: sentence attention scores. [batch_size, num_sentence]
+        # att_scores = torch.exp(u_w - val)
+        att_scores = torch.softmax(u_w, dim=-1)
+        # att_scores = att_scores / torch.sum(att_scores, dim=1, keepdim=True)
         # att_scores: sentence attention scores. [batch_size, num_sentence]
-        att_scores = torch.exp(u_w - val)
-        att_scores = att_scores / torch.sum(att_scores, dim=1, keepdim=True)
-        # att_scores: sentence attention scores. [batch_size, num_sentence]
-        # att_scores = att_scores.masked_fill((~sentence_mask).bool(), -1e4)
-        # att_scores = F.softmax(att_scores, dim=-1)
-        # print(att_scores, sentence_mask)
         # result: abstract representations. [batch_size, hidden_dim]
         result = torch.bmm(att_scores.unsqueeze(1), sentence_reps).squeeze(1)
         # sentence_reps = torch.mul(sentence_reps, att_scores.unsqueeze(2))
@@ -207,65 +196,33 @@ class SentenceAttention(nn.Module):
         # return sentence_reps[:, 0, :], sentence_reps
 
 
-class AttentionCNN(nn.Module):
-    """ Head for sentence-level classification tasks (CNN model). """
+class AbstractAttention(nn.Module):
+    """
+    word-level attention. abstract representation for abstract retrieval.
+    """
     def __init__(self, hidden_size, num_labels, dropout=0.1):
-        super(AttentionCNN, self).__init__()
-        self.dense = nn.Linear(hidden_size, hidden_size, bias=True)
+        super(AbstractAttention, self).__init__()
+        self.dense = TimeDistributed(hidden_size, hidden_size)
         self.dropout = nn.Dropout(dropout)
         self.classifier = ClassificationHead(hidden_size, num_labels, dropout=dropout)
         self.hidden_size = hidden_size
-        self.conv_layer = ConvLayer(self.hidden_size, dropout=dropout)
+        self.att_scorer = TimeDistributed(hidden_size, 1)
 
-        self.embed_dim = hidden_size
-        self.bidirectional = True
-        self.layer_size = 1
-        self.lstm = nn.LSTM(self.embed_dim,
-                            self.hidden_size // 2,
-                            self.layer_size,
-                            dropout=dropout,
-                            bidirectional=self.bidirectional)
-
-        if self.bidirectional:
-            self.layer_size = self.layer_size * 2
-        else:
-            self.layer_size = self.layer_size
-
-        self.attention_size = 16
-        self.w_omega = Variable(torch.zeros(hidden_size, self.attention_size).cuda())
-        self.u_omega = Variable(torch.zeros(self.attention_size).cuda())
-
-    def attention_pooling(self, x1, x2):
-        # x1: cnn out, x2: lstm out
-        att_e = self.cosine_similarity(x1, x2)
-        att_scores = torch.exp(att_e)
+    def forward(self, x):
+        att_s = self.dropout(x)
+        att_s = self.dense(att_s)
+        u_i = self.dropout(torch.tanh(att_s))
+        u_w = self.att_scorer(u_i).squeeze(-1).view(x.size(0), x.size(1))
+        val = u_w.max()
+        att_scores = torch.exp(u_w - val)
         att_scores = att_scores / torch.sum(att_scores, dim=1, keepdim=True)
-        att_scores = torch.Tensor.reshape(att_scores, [1, x1.shape[0], -1])
-        x = x1.permute(1, 0, 2)
-        att_output = torch.sum(x * att_scores, 1)
-        # output_reshape = torch.Tensor.reshape(x, [-1, self.hidden_size])
-        # att_tanh = torch.tanh(torch.mm(output_reshape, self.w_omega))
-        # att_hidden_layer = torch.mm(att_tanh, torch.Tensor.reshape(self.u_omega, [-1, 1]))
-        # exps = torch.Tensor.reshape(torch.exp(att_hidden_layer), [-1, x.shape[0]])
-        # alpha = exps / torch.Tensor.reshape(torch.sum(exps, 1), [-1, 1])
-        # alpha = torch.Tensor.reshape(alpha, [-1, x.shape[0], 1])
-        # state = x.permute(1, 0, 2)
-        # att_output = torch.sum(state * alpha, 1)
-        return att_output
-
-    def forward(self, x, cnn_out):
-        cnn_out = cnn_out.permute(1, 0, 2)
-        x = x.permute(1, 0, 2)
-
-        h_0 = Variable(torch.zeros(self.layer_size, x.size(1), self.hidden_size // 2).cuda())
-        c_0 = Variable(torch.zeros(self.layer_size, x.size(1), self.hidden_size // 2).cuda())
-        lstm_output, (_, _) = self.lstm(x, (h_0, c_0))
-        att_out = self.attention_pooling(cnn_out, lstm_output)
-        output = self.classifier(att_out)
+        # att_scores = torch.mul(att_scores, cosine_similarity)
+        out = torch.bmm(att_scores.unsqueeze(1), x).squeeze(1)
+        output = self.classifier(out)
         return output
 
     def cosine_similarity(self, x1, x2):
-        return F.cosine_similarity(x1, x2).unsqueeze(1)
+        return F.cosine_similarity(x1, x2, dim=2)
 
 
 class ClassificationHead(nn.Module):
@@ -273,9 +230,9 @@ class ClassificationHead(nn.Module):
 
     def __init__(self, hidden_size, num_labels, dropout=0.1):
         super().__init__()
-        self.dense = nn.Linear(hidden_size, hidden_size, bias=True)
+        self.dense = TimeDistributed(hidden_size, hidden_size)
         self.dropout = nn.Dropout(dropout)
-        self.output = nn.Linear(hidden_size, num_labels, bias=True)
+        self.output = TimeDistributed(hidden_size, num_labels)
 
     def forward(self, x):
         x = self.dropout(x)
@@ -284,6 +241,27 @@ class ClassificationHead(nn.Module):
         x = self.dropout(x)
         x = self.output(x)
         return x
+
+
+class SelfAttentionNetwork(nn.Module):
+
+    def __init__(self, hidden_dim, dropout=0.1):
+        super(SelfAttentionNetwork, self).__init__()
+        self.dense = TimeDistributed(hidden_dim, hidden_dim)
+        self.att_scorer = TimeDistributed(hidden_dim, 1)
+        self.dropout_layer = nn.Dropout(dropout)
+
+    def forward(self, x, token_mask):
+        att_s = self.dropout_layer(x)
+        att_s = self.dense(att_s)
+        u_i = self.dropout_layer(torch.tanh(att_s))
+        u_w = self.att_scorer(u_i).squeeze(-1).view(x.size(0), x.size(1))
+        u_w = u_w.masked_fill((1 - token_mask).bool(), float('-inf'))
+        att_scores = torch.softmax(u_w, dim=-1)
+        att_scores = torch.where(torch.isnan(att_scores), torch.zeros_like(att_scores),
+                                 att_scores)
+        out = torch.bmm(att_scores.unsqueeze(1), x).squeeze(1)
+        return out
 
 
 def ignore_padding(output, target, padding_idx=2):
@@ -311,48 +289,80 @@ class JointModelClassifier(nn.Module):
         self.num_rationale_label = 2
         self.sim_label = 2
         self.bert = AutoModel.from_pretrained(args.model)
-        self.abstract_criterion = DiceLoss(with_logits=True, smooth=0.5, ohem_ratio=0.1, alpha=0.01, reduction='mean',
-                                           square_denominator=True)
-        self.rationale_criterion = DiceLoss(with_logits=True, smooth=1, ohem_ratio=0.1, alpha=0.01, reduction='mean',
-                                            square_denominator=True)
-        self.retrieval_criterion = DiceLoss(with_logits=True, smooth=1, ohem_ratio=0.1, alpha=0.01, reduction='mean',
-                                            square_denominator=True)
+        # self.abstract_criterion = DiceLoss(with_logits=True, smooth=0.5, ohem_ratio=0.1, alpha=0.01, reduction='mean',
+        #                                    square_denominator=True, index_label_position=True)
+        # self.rationale_criterion = DiceLoss(with_logits=True, smooth=1, ohem_ratio=0.1, alpha=0.01, reduction='mean',
+        #                                     square_denominator=True, index_label_position=True)
+        # self.retrieval_criterion = DiceLoss(with_logits=True, smooth=1, ohem_ratio=0.1, alpha=0.01, reduction='mean',
+        #                                     square_denominator=True, index_label_position=True)
+        self.abstract_criterion = nn.CrossEntropyLoss()
+        self.rationale_criterion = nn.CrossEntropyLoss(ignore_index=2)
+        self.retrieval_criterion = nn.CrossEntropyLoss()
+        # self.abstract_criterion = MultiFocalLoss(3, alpha=[0.1, 0.6, 0.3])
+        # self.rationale_criterion = FocalLoss(weight=torch.tensor([0.25, 0.75]), reduction='mean')
+        # self.retrieval_criterion = FocalLoss(weight=torch.tensor([0.25, 0.75]), reduction='mean')
         self.dropout = args.dropout
         self.hidden_dim = args.hidden_dim
         self.word_attention = WordAttention(self.hidden_dim, self.hidden_dim, dropout=self.dropout)
         self.sentence_attention = SentenceAttention(self.hidden_dim, self.hidden_dim, dropout=self.dropout)
         self.rationale_linear = ClassificationHead(self.hidden_dim, self.num_rationale_label, dropout=self.dropout)
         self.abstract_linear = ClassificationHead(self.hidden_dim, self.num_abstract_label, dropout=self.dropout)
-        self.abstract_retrieval = AttentionCNN(self.hidden_dim, self.sim_label, dropout=self.dropout)
-        self.conv_layer = ConvLayer(self.hidden_dim, dropout=self.dropout)
+        self.abstract_retrieval = AbstractAttention(self.hidden_dim, self.sim_label, dropout=self.dropout)
+        self.self_attention = SelfAttentionNetwork(self.hidden_dim, dropout=self.dropout)
 
-    def forward(self, encoded_dict, transformation_indices, match_indices, abstract_label=None, rationale_label=None,
-                sim_label=None, train=False, retrieval_out=False, sample_p=1):
+        self.extra_modules = [
+            self.word_attention,
+            self.sentence_attention,
+            self.abstract_linear,
+            self.rationale_linear,
+            self.abstract_criterion,
+            self.rationale_criterion,
+            self.retrieval_criterion,
+        ]
+
+    def forward(self, encoded_dict, transformation_indices, abstract_label=None, rationale_label=None,
+                retrieval_label=None, train=False, retrieval_only=False, abstract_sample=1, rationale_sample=1):
         batch_indices, indices_by_batch, mask = transformation_indices
-        match_batch_indices, match_indices_by_batch, match_mask = match_indices
+        # match_batch_indices, match_indices_by_batch, match_mask = match_indices
         # (batch_size, num_sep, num_token)
-        output = self.bert(**encoded_dict)  # [batch_size, sequence_len, hidden_dim]
-        bert_out = output[0]
+        bert_out = self.bert(**encoded_dict)[0]  # [batch_size, sequence_len, hidden_dim]
 
-        corpus_tokens = bert_out[match_batch_indices, match_indices_by_batch, :]
-        corpus_tokens = corpus_tokens.squeeze(1)  # [batch_size, sequence_len, hidden_dim]
-        cnn_out = self.conv_layer(corpus_tokens)
+        claim_token = bert_out[batch_indices[:, 0, :], indices_by_batch[:, 0, :], :]
+        claim_mask = mask[:, 0, :]
+        claim_representation = self.self_attention(claim_token, claim_mask)
 
-        # classifier_out = output[1]  # [batch_size, hidden_dim]
+        sentence_token = range(1, batch_indices.shape[1])
+        batch_indices, indices_by_batch, mask = batch_indices[:, sentence_token, :], \
+                                                indices_by_batch[:, sentence_token, :], mask[:, sentence_token, :]
+
+        # corpus_tokens = bert_out[match_batch_indices, match_indices_by_batch, :]
+        # claim_token = bert_out[match_batch_indices[:, 0, :], match_indices_by_batch[:, 0, :], :]
+        # corpus_tokens = corpus_tokens.squeeze(1)  # [batch_size, sequence_len, hidden_dim]
+        # claim_token = claim_token.squeeze(1)
+        # # cnn_out = self.conv_layer(corpus_tokens)
+        # # classifier_out = output[1]  # [batch_size, hidden_dim]
         bert_tokens = bert_out[batch_indices, indices_by_batch, :]  # get Bert tokens(sentences level)
         # bert_tokens: [batch_size, num_sentence, num_token, hidden_dim]
-        abstract_retrieval = self.abstract_retrieval(corpus_tokens, cnn_out)
+        # abstract_retrieval = self.abstract_retrieval(corpus_tokens, cnn_out)
+        abstract_retrieval = self.abstract_retrieval(bert_out)
 
-        if bool(torch.rand(1) < sample_p):  # Choose abstract according to predicted abstract
+        if retrieval_only:
+            retrieval_out = torch.argmax(abstract_retrieval.cpu(), dim=-1).detach().numpy().tolist()
+            retrieval_loss = self.retrieval_criterion(abstract_retrieval,
+                                                      retrieval_label) if retrieval_label is not None else None
+            return retrieval_out, retrieval_loss
+
+        if bool(torch.rand(1) < abstract_sample):  # Choose abstract according to predicted abstract
             valid_abstract = abstract_retrieval[:, 1] > abstract_retrieval[:, 0]
         else:
-            valid_abstract = sim_label == 1  # Ground truth
+            valid_abstract = retrieval_label == retrieval_label
 
         sentence_representations, sentence_mask, word_att_score = self.word_attention(bert_tokens, mask, valid_abstract)
 
-        rationale_score = self.rationale_linear(sentence_representations)
+        claim_sentence = torch.mul(claim_representation.unsqueeze(1), sentence_representations)
+        rationale_score = self.rationale_linear(claim_sentence)
 
-        if bool(torch.rand(1) < sample_p):  # Choose sentence according to predicted rationale
+        if bool(torch.rand(1) < rationale_sample):  # Choose sentence according to predicted rationale
             valid_scores = rationale_score[:, :, 1] > rationale_score[:, :, 0]
         else:
             valid_scores = rationale_label == 1  # Ground truth
@@ -373,21 +383,20 @@ class JointModelClassifier(nn.Module):
             abstract_loss = None
 
         if rationale_label is not None:
-            output, target = ignore_padding(rationale_score, rationale_label)
-            rationale_loss = self.rationale_criterion(output, target)
+            # output, target = ignore_padding(rationale_score, rationale_label)
+            # rationale_loss = self.rationale_criterion(output, target)
+            rationale_loss = self.rationale_criterion(rationale_score.view(-1, self.num_rationale_label),
+                                                      rationale_label.view(-1))
         else:
             rationale_loss = None
 
-        if sim_label is not None:
-            retrieval_loss = self.retrieval_criterion(abstract_retrieval, sim_label)
+        if retrieval_label is not None:
+            retrieval_loss = self.retrieval_criterion(abstract_retrieval, retrieval_label)
         else:
             retrieval_loss = None
         if train:
             return abstract_out, rationale_out, abstract_loss, rationale_loss, retrieval_loss
-        if retrieval_out:
-            return torch.argmax(abstract_retrieval.cpu(), dim=-1).detach().numpy().tolist()
         return abstract_out, rationale_out
-
 
 
 
