@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 import dataset.loader as loader
-from dataset.utils import merge, merge_json
+from dataset.utils import merge, merge_json, merge_retrieval
 from evaluation.metrics import compute_f1, compute_metrics
 from evaluation.data import GoldDataset, PredictedDataset
 from dataset.encode import encode_sen_pair, encode_sentence, encode_paragraph
@@ -36,7 +36,7 @@ def evaluate_rationale_selection(args, rationale_results):
     # evaluate rationale selection results.
     # ================================================================================================================ #
     '''
-    evaluation_set = args.claim_dev_path
+    evaluation_set = args.claim_test_path
     dataset = loader.loader_json(evaluation_set)
     rationale_results = loader.loader_json(rationale_results)
     counts = Counter()
@@ -69,7 +69,7 @@ def evaluate_label_predictions(args, label_results):
     # evaluate label predictions results.
     # ================================================================================================================ #
     '''
-    evaluation_set = args.claim_dev_path
+    evaluation_set = args.claim_test_path
     # evaluation
     corpus = loader.get_corpus(args.corpus_path)
     dataset = loader.loader_json(evaluation_set)
@@ -118,12 +118,13 @@ def evaluate_label_predictions(args, label_results):
 def merge_rationale_label(rationale_results, label_results, args, state='valid', gold=''):
     '''
     # ================================================================================================================ #
-    # merge rationale and label predictions.
+    # merge rationale and label predictions and abstract retrieval results.
     # evaluate final predictions.
     # ================================================================================================================ #
     '''
     print('evaluate final predictions result...')
-    merge(rationale_results, label_results, args.merge_results)
+    res = merge(rationale_results, label_results, args.merge_results)
+    # merge_retrieval(res, abstract_results, args.merge_results)
     # merge_json(rationale_results, label_results, args.merge_results)
 
     if state == 'valid':
@@ -142,8 +143,10 @@ def merge_rationale_label(rationale_results, label_results, args, state='valid',
             with open(args.output, "w") as f:
                 json.dump(res.to_dict(), f, indent=2)
         print(res)
+        return res
     else:
         print('')
+        return None
 
 
 def evaluation_joint(model, dataset, args, tokenizer, mode='rationale&label'):
@@ -154,7 +157,8 @@ def evaluation_joint(model, dataset, args, tokenizer, mode='rationale&label'):
     rationale_output = []
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     with torch.no_grad():
-        for batch in tqdm(DataLoader(dataset, batch_size=args.batch_size_gpu, shuffle=False)):
+        t = tqdm(DataLoader(dataset, batch_size=args.batch_size_gpu, shuffle=False))
+        for i, batch in enumerate(t):
             encoded_dict = encode_paragraph(tokenizer, batch['claim'], batch['abstract'])
             # encoded = encode_paragraph(tokenizer, batch['claim'], batch['paragraph'])
             # encoded = {key: tensor.to(device) for key, tensor in encoded.items()}
@@ -166,7 +170,13 @@ def evaluation_joint(model, dataset, args, tokenizer, mode='rationale&label'):
             transformation_indices = [tensor.to(device) for tensor in transformation_indices]
             # match_indices = [tensor.to(device) for tensor in match_indices]
             padded_label, rationale_label = get_rationale_label(batch["sentence_label"], padding_idx=2)
-            abstract_out, rationale_out = model(encoded_dict, transformation_indices)
+            abstract_out, rationale_out, retrieval_out = model(encoded_dict, transformation_indices)
+            # loss = abstract_loss + rationale_loss + retrieval_loss
+            # if (i + 1) % (args.batch_size_accumulated // args.batch_size_gpu) == 0:
+            #     t.set_description(f'iter {i}, loss: {round(loss.item(), 4)},'
+            #                       f' abstract loss: {round(abstract_loss.item(), 4)},'
+            #                       f' rationale loss: {round(rationale_loss.item(), 4)},'
+            #                       f' retrieval loss: {round(retrieval_loss.item(), 4)}')
             # abstract_out = torch.argmax(abstract_score.cpu(), dim=-1).detach().numpy().tolist()
             # rationale_out = torch.argmax(rationale_score.cpu(), dim=-1).detach().numpy().tolist()
 

@@ -22,6 +22,7 @@ def get_predictions(args, input_set, checkpoint):
     # p
     abstract_result = []
     rationale_result = []
+    retrieval_result = []
     with torch.no_grad():
         for batch in tqdm(DataLoader(input_set, batch_size=1, shuffle=False)):
             encoded_dict = encode_paragraph(tokenizer, batch['claim'], batch['abstract'])
@@ -35,8 +36,30 @@ def get_predictions(args, input_set, checkpoint):
             transformation_indices = [tensor.to(device) for tensor in transformation_indices]
             # match_indices = [tensor.to(device) for tensor in match_indices]
             # abstract_out, rationale_out = model(encoded_dict, transformation_indices, match_indices)
-            abstract_out, rationale_out = model(encoded_dict, transformation_indices)
+            abstract_out, rationale_out, retrieval_out = model(encoded_dict, transformation_indices)
             abstract_result.extend(abstract_out)
             rationale_result.extend(rationale_out)
+            retrieval_result.extend(retrieval_out)
 
-    return abstract_result, rationale_result
+    return abstract_result, rationale_result, retrieval_result
+
+
+def get_abstract_retrieval(args, input_set, checkpoint):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    tokenizer = AutoTokenizer.from_pretrained(args.model)
+    model = JointModelClassifier(args).to(device)
+    model.load_state_dict(torch.load(checkpoint))
+    model.eval()
+    retrieval_result = []
+    with torch.no_grad():
+        for batch in tqdm(DataLoader(input_set, batch_size=1, shuffle=False)):
+            encoded_dict = encode_paragraph(tokenizer, batch['claim'], batch['abstract'])
+            transformation_indices = token_idx_by_sentence(encoded_dict['input_ids'], tokenizer.sep_token_id,
+                                                           args.model)
+            encoded_dict = {key: tensor.to(device) for key, tensor in encoded_dict.items()}
+            transformation_indices = [tensor.to(device) for tensor in transformation_indices]
+            retrieval_out, _ = model(encoded_dict, transformation_indices,
+                                     retrieval_only=True)
+            retrieval_result.extend(retrieval_out)
+
+    return retrieval_result

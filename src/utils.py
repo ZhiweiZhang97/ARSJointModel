@@ -1,3 +1,5 @@
+import json
+
 import torch
 import torch.nn as nn
 from jsonlines import jsonlines
@@ -136,5 +138,37 @@ def predictions2jsonl(claims_file, abstract_results, rationale_results):
 
 def remove_dummy(rationale_out):
     return [out[1:] for out in rationale_out]
+
+
+def retrieval2jsonl(claims_file, retrieval_result):
+    claim_ids = []
+    claims = {}
+    # output_retrieval = jsonlines.open("prediction/abstract_retrieval.jsonl", 'w')
+    output_retrieval = "prediction/abstract_retrieval.jsonl"
+    assert (len(claims_file) == len(retrieval_result))
+
+    # LABELS = ['NOT_RELATED', 'RELATED']
+    for claim, retrieval in zip(claims_file, retrieval_result):
+        # retrieval_abstract = []
+        claim_id = claim['claim_id']
+        claim_ids.append(claim_id)
+        curr_claim = claims.get(claim_id, {'id': claim_id, 'claim': claim['claim'], 'doc_ids': []})
+        curr_claim['doc_ids'] = curr_claim['doc_ids']
+        if retrieval == 1:
+            curr_claim['doc_ids'].append(claim['doc_id'])
+        claims[claim_id] = curr_claim
+    abstract_claim = [claims[claim_id] for claim_id in sorted(list(set(claim_ids)))]
+    # print(abstract_claim)
+    retrieval_abstract = {}
+    with open(output_retrieval, "w") as f:
+        for entry in abstract_claim:
+            print(json.dumps(entry), file=f)
+    # for abstract in abstract_claim:
+    #     output_retrieval.write({
+    #         'id': abstract['claim_id'],
+    #         'claim': abstract['claim'],
+    #         'doc_ids': abstract['doc_ids']
+    #     })
+    return "prediction/abstract_retrieval.jsonl"
 
 

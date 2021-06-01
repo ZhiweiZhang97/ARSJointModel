@@ -408,6 +408,11 @@ class SciFactJointDataset(Dataset):
             if train:
                 evidence_doc_ids = [int(id) for id in list(claim['evidence'].keys())]
                 all_candidates = sorted((list(set(candidate_abstract + evidence_doc_ids))))
+            # elif oracle:
+            #     if claim['evidence'] != {}:
+            #         all_candidates = [int(id) for id in list(claim['evidence'].keys())]
+            #     else:
+            #         all_candidates = []
             else:
                 all_candidates = candidate_abstract
             for doc_id in all_candidates:
@@ -439,7 +444,9 @@ class SciFactJointDataset(Dataset):
                                 concat_sentences = clean_num(clean_url(concat_sentences))  # clean the url in the sentence
                                 rationale_label_str = ''.join(
                                     ['1' if i in kept_evidence_idx else '0' for i in range(len(kept_sentences))])
-                                # concat_sentences = doc['title'] + ' ' + sep_token + ' ' + concat_sentences
+                                title = clean_num(clean_url(doc['title']))
+                                concat_sentences = title + ' ' + sep_token + ' ' + concat_sentences
+                                # concat_sentences = concat_sentences + ' ' + sep_token + ' ' + doc['title']
                                 # rationale_label_str = "1" + rationale_label_str
 
                                 self.samples.append({
@@ -463,7 +470,8 @@ class SciFactJointDataset(Dataset):
                     rationale_label_str = ''.join(
                         ['1' if i in evidence_sentence_idx else '0' for i in range(len(abstract_sentences))])
                     # print(rationale_label_str)
-                    # concat_sentences = doc['title'] + ' ' + sep_token + ' ' + concat_sentences
+                    title = clean_num(clean_url(doc['title']))
+                    concat_sentences = title + ' ' + sep_token + ' ' + concat_sentences
                     # rationale_label_str = "1" + rationale_label_str
 
                     self.samples.append({
@@ -479,7 +487,8 @@ class SciFactJointDataset(Dataset):
                     })
                 else:
                     concat_sentences = (' ' + sep_token + ' ').join(abstract_sentences)
-                    # concat_sentences = doc['title'] + ' ' + sep_token + ' ' + concat_sentences
+                    title = clean_num(clean_url(doc['title']))
+                    concat_sentences = title + ' ' + sep_token + ' ' + concat_sentences
 
                     self.samples.append({
                         'claim': claim['claim'],
@@ -509,11 +518,118 @@ class SciFactJointPredictionData(Dataset):
         self.samples = []
         self.excluded_pairs = []
         corpus = {doc['doc_id']: doc for doc in jsonlines.open(corpus)}
+        for claim in jsonlines.open(claims):
+            for doc_id in corpus.keys():
+                doc = corpus[int(doc_id)]
+                # doc_id = str(doc_id)
+                abstract_sentences = [sentence.strip() for sentence in doc['abstract']]
+                abstract_sentences = clean_invalid_sentence(abstract_sentences)  # #
+                concat_sentences = (' ' + sep_token + ' ').join(abstract_sentences)
+                title = clean_num(clean_url(doc['title']))
+                concat_sentences = title + ' ' + sep_token + ' ' + concat_sentences
+
+                self.samples.append({
+                    'claim': claim['claim'],
+                    'claim_id': claim['id'],
+                    'doc_id': doc['doc_id'],
+                    'abstract': concat_sentences,
+                    # 'paragraph': ' '.join(abstract_sentences),
+                    'title': ' ' + sep_token + ' '.join(doc['title']),
+                })
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
         return self.samples[idx]
+
+
+class FEVERParagraphBatchDataset(Dataset):
+    """
+    Dataset for a feeding a paragraph to a single BERT model.
+    """
+
+    def __init__(self, datapath: str, sep_token="</s>", train=True, k=0):
+        self.label_ind = {"NEI": 0, "rationale": 1}
+        self.rev_label_ind = {i: l for (l, i) in self.label_ind.items()}
+        self.stance_ind = {"NOT ENOUGH INFO": 0, "CONTRADICT": 1, "SUPPORTS": 2}
+        self.rev_stance_ind = {i: l for (l, i) in self.stance_ind.items()}
+
+        self.samples = []
+        self.excluded_pairs = []
+
+        def max_sent_len(sentences):
+            return max([len(sent.split()) for sent in sentences])
+
+        for data in jsonlines.open(datapath):
+            try:
+                if len(data["sentences"]) > 0:
+                    sentences = data["sentences"]
+                    if max_sent_len(sentences) > 100 or len(sentences) > 100:
+                        continue
+                    concat_sentences = (" " + sep_token + " ").join(sentences)
+                    concat_sentences = clean_num(clean_url(concat_sentences))
+                    if train:
+                        rationales = []
+                        for evid in data["evidence_sets"]:
+                            rationales.extend(evid)
+                        evidence_idx = set(rationales)
+                        rationale_label_string = "".join(
+                            ["1" if i in evidence_idx else "0" for i in range(len(sentences))])
+
+                        self.samples.append({
+                            'claim': data['claim'],
+                            'claim_id': data['id'],
+                            'abstract': concat_sentences,
+                            'sentence_label': rationale_label_string,
+                            'abstract_label': self.stance_ind[data["label"]],
+                            'sim_label': 1 if int(self.stance_ind[data["label"]]) == 1 or int(
+                                self.stance_ind[data["label"]]) == 2 else 0
+                        })
+                    elif data["hit"]:  # The retrieved pages hit the gold page.
+                        self.samples.append({
+                            'claim': data['claim'],
+                            'claim_id': data['id'],
+                            'abstract': concat_sentences
+                        })
+            except:
+                pass
+            try:
+                if len(data["negative_sentences"]) > 0:
+                    for sentences in data["negative_sentences"][:k]:
+                        if max_sent_len(sentences) > 100 or len(sentences) > 100:
+                            continue
+
+                        concat_sentences = (" " + sep_token + " ").join(sentences)
+                        concat_sentences = clean_num(clean_url(concat_sentences))
+
+                        if train:
+                            rationale_label_string = "0" * len(sentences)
+
+                            self.samples.append({
+                                'claim': data['claim'],
+                                'claim_id': data['id'],
+                                'abstract': concat_sentences,
+                                'sentence_label': rationale_label_string,
+                                'abstract_label': self.stance_ind["NOT ENOUGH INFO"],
+                                'sim_label': 1 if int(self.stance_ind["NOT ENOUGH INFO"]) == 1 or int(
+                                    self.stance_ind["NOT ENOUGH INFO"]) == 2 else 0
+                            })
+                        else:
+
+                            self.samples.append({
+                                'claim': data['claim'],
+                                'claim_id': data['id'],
+                                'abstract': concat_sentences
+                            })
+            except:
+                pass
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        return self.samples[idx]
+
 
 

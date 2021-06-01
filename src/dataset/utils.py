@@ -109,6 +109,7 @@ def merge(rationales, labels, result_file):
     with open(result_file, "w") as f:
         for entry in res:
             print(json.dumps(entry), file=f)
+    return res
 
 
 def merge_json(rationales, labels, result_file):
@@ -128,6 +129,25 @@ def merge_json(rationales, labels, result_file):
     with jsonlines.open(result_file, 'w') as output:
         for result in results:
             output.write(result)
+
+
+def merge_retrieval(merge_result, retrieval_result, result_file):
+    merge_ids = [x["id"] for x in merge_result]
+    retrieval_ids = [x["claim_id"] for x in retrieval_result]
+    if merge_ids != retrieval_ids:
+        raise ValueError("Claim ID's for merge label and rationale file and retrieval file don't match.")
+    for claim, retrieval in zip(merge_result, retrieval_result):
+        abstract = {}
+        for abstract_id in retrieval['evidence']:
+            if retrieval['evidence'][abstract_id]['label'] == 'RELATED':
+                abstract[abstract_id] = {"sentences": [], "label": "NOT_ENOUGH_INFO"}
+        if claim['evidence'] == {}:
+            claim['evidence'] = abstract
+        # print(claim)
+
+    with open(result_file, "w") as f:
+        for entry in merge_result:
+            print(json.dumps(entry), file=f)
 
 
 def abstract_retrieval(dataset, output, args, state='train', include_nei=False):
@@ -237,14 +257,14 @@ def tfidf_abstract(dataset, output, args, min_gram=1, max_gram=2):
         })
 
 
-def split_dataset(train_data):
+def split_dataset(train_data, retrieval=''):
     '''
     split train data. train data 0.8, dev data 0.2.
     '''
     claims_train_data = [claim for claim in jsonlines.open(train_data)]
     train_data, dev_data = train_test_split(claims_train_data, test_size=0.2)
-    output_train = jsonlines.open('/home/g19tka09/Documents/SCIVER/data/train_data_Bio.jsonl', 'w')
-    output_dev = jsonlines.open('/home/g19tka09/Documents/SCIVER/data/dev_data_Bio.jsonl', 'w')
+    output_train = jsonlines.open('/home/g19tka09/Documents/SCIVER/data/train_data' + retrieval + '.jsonl', 'w')
+    output_dev = jsonlines.open('/home/g19tka09/Documents/SCIVER/data/dev_data' + retrieval + '.jsonl', 'w')
     for data in train_data:
         output_train.write({
             'id': data['id'],

@@ -110,7 +110,7 @@ def main():
     args.hidden_dim = 1024  # 768/1024
     # args.alpha = 1.9  # BioBert-large
     # args.alpha = 2.2  # RoBerta-large
-    args.alpha = 6.7  # BioBert-large share
+    args.alpha = 2.7  # BioBert-large share
     # args.lambdas = [0.2, 1.1, 12.0]  # BioBert-large w   /get
     # args.lambdas = [0.9, 2.6, 11.1]  # RoBerta-large w
     # args.lambdas = [0.1, 4.7, 10.8]  # BioBert-large w/o /get
@@ -127,13 +127,13 @@ def main():
                                    sep_token=tokenizer.sep_token, k=args.k, train=False, down_sampling=False)
     # test_set = SciFactJointPredictionData(args.corpus_path, claim_test_path, sep_token=tokenizer.sep_token)
     # print(test_set.samples[0])
-    checkpoint = train_base(train_set, dev_set, args)
-    # checkpoint = 'model/RoBerta_large_w.model'
+    # checkpoint = train_base(train_set, dev_set, args)
+    checkpoint = 'model/BioBert_large_w.model'
     # checkpoint = 'tmp-runs/162030701614073-abstract_f1-6925-rationale_f1-6753.model'
     # print(checkpoint)
     abstract_result, rationale_result, retrieval_result = get_predictions(args, test_set, checkpoint)
     rationales, labels = predictions2jsonl(test_set.samples, abstract_result, rationale_result)
-    # retrieval2jsonl(test_set.samples, retrieval_result)
+    retrieval2jsonl(test_set.samples, retrieval_result)
     # merge(rationales, labels, args.merge_results)
     if prediction:
         merge(rationales, labels, args.merge_results)
