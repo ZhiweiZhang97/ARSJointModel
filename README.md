@@ -72,4 +72,4 @@ Then, install Python requirements:
 pip install -r requirements.txt
 ```
 
-The checkpoint of Paragraph-Joint model used for the paper (trained on training set) is available here ([RoBERTa-large](https://drive.google.com/file/d/1iV_5rNC1ZYDRp-tCRoiA70YmW_OVA1Qe/view?usp=sharing)).
+The checkpoint of Paragraph-Joint model used for the paper (trained on training set) is available here ([RoBERTa-large](https://drive.google.com/file/d/1iV_5rNC1ZYDRp-tCRoiA70YmW_OVA1Qe/view?usp=sharing)、[w/o RR RoBERTa-large](https://drive.google.com/file/d/1fQPWoXjb5mHx8aioDrqOJdP-ym11Nw8j/view?usp=sharing)、[BioBERT-large]()、[w/o RR BioBERT-large]()).
