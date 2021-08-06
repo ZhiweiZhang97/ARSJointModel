@@ -9,7 +9,7 @@ Due to the rapid growth in scientific literature, it is difficult for scientists
 3. Label them as Supporting or Refuting the claim
 4. Select sentences as evidence for the label
 
-### Dataset
+## Dataset
 * A list of abstracts from the corpus containing relevant evidence.
 * A label indicating whether each abstract Supports or Refutes the claim.
 * All evidence sets found in each abstract that justify the label. An evidence set is a collection of sentences that, taken together, verifies the claim. Evidence sets can be one or more sentences.
@@ -34,7 +34,7 @@ Due to the rapid growth in scientific literature, it is difficult for scientists
   "cited_doc_ids": [11, 15]
 }
 ```
-### Evaluation
+## Evaluation
 Two evaluation metrics will be used. 
 
 **Abstract-level evaluation**
@@ -56,3 +56,18 @@ Sentence-level evaluation scores the correctness of the individual predicted evi
 3. All other sentences in that same gold evidence set are also identified by the model as evidence sentences.
 
 We then compute the F1 score over all predicted evidence sentences.
+
+## Dependencies
+
+We recommend you create an anaconda environment:
+``` python
+conda create --name scifact python=3.7 conda-build
+```
+Then, from the `scifact` project root, run
+``` python
+conda develop .
+```
+Then, install Python requirements:
+``` python
+pip install -r requirements.txt
+```
