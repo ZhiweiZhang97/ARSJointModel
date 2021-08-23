@@ -55,7 +55,9 @@ Sentence-level evaluation scores the correctness of the individual predicted evi
 2. The sentence is part of some gold evidence set.
 3. All other sentences in that same gold evidence set are also identified by the model as evidence sentences.
 
-We then compute the F1 score over all predicted evidence sentences.
+We then compute the F1 score over all predicted evidence sentences. Here's a simple [step-by-step](https://github.com/allenai/scifact/blob/master/doc/evaluation.md) example showing how these metrics are calculated.
+
+
 
 ## Dependencies
 
