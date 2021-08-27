@@ -61,6 +61,7 @@ def parse_args():
     parser.add_argument('--k', type=int, default=10, help="number of abstract retrieval(training)")
     parser.add_argument('--alpha', type=float, default=0.0)
     parser.add_argument('--lambdas', type=float, default=[1, 2, 12])
+    parser.add_argument('--state', type=str, default='train', choices=['train', 'prediction'])
 
     return parser.parse_args()
 
@@ -84,7 +85,7 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # loader dataset
     split = False
-    prediction = False
+    eval_prediction = True
     if split:
         # split_dataset('../data/claims_train_retrieval.jsonl')
         claim_train_path = '../data/train_data_Bio.jsonl'
@@ -126,20 +127,20 @@ def main():
     test_set = SciFactJointDataset(args.corpus_path, claim_test_path,
                                    sep_token=tokenizer.sep_token, k=args.k, train=False, down_sampling=False)
     # test_set = SciFactJointPredictionData(args.corpus_path, claim_test_path, sep_token=tokenizer.sep_token)
-    # print(test_set.samples[0])
-    checkpoint = train_base(train_set, dev_set, args)
-    # checkpoint = 'model/RoBerta_large_w.model'
-    # checkpoint = 'tmp-runs/162030701614073-abstract_f1-6925-rationale_f1-6753.model'
+    if args.state = 'train':
+        checkpoint = train_base(train_set, dev_set, args)
+    if args.state = 'prediction':
+        checkpoint = 'model/RoBerta_large_w.model'
+        # checkpoint = 'tmp-runs/162030701614073-abstract_f1-6925-rationale_f1-6753.model'
     # print(checkpoint)
     abstract_result, rationale_result, retrieval_result = get_predictions(args, test_set, checkpoint)
     rationales, labels = predictions2jsonl(test_set.samples, abstract_result, rationale_result)
     # retrieval2jsonl(test_set.samples, retrieval_result)
     # merge(rationales, labels, args.merge_results)
-    if prediction:
+    if not eval_prediction:
         merge(rationales, labels, args.merge_results)
     else:
         merge(rationales, labels, args.merge_results)
-        print('共享biobert，att_score+pre_label & pre_label+att_score')
         print('rationale selection...')
         evaluate_rationale_selection(args, "prediction/rationale_selection.jsonl")
         print('label predictions...')
