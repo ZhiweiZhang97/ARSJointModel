@@ -118,7 +118,6 @@ def main():
     # args.lambdas = [2.7, 2.2, 11.7]  # RoBerta-large w/o
     args.lambdas = [1.6, 2.5, 9.5]  # # BioBert-large share w
     printf(args, split)
-    print('共享biobert，att_score+pre_label & pre_label+att_score')
     k_train = 12
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     train_set = SciFactJointDataset(args.corpus_path, claim_train_path, sep_token=tokenizer.sep_token, k=k_train)
