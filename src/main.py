@@ -37,6 +37,7 @@ def parse_args():
     parser.add_argument('--output', type=str, default='prediction/result_evaluation.json',
                         help='The predictions.')
     parser.add_argument('--pre_trained_model', type=str)
+    parser.add_argument('--checkpoint', type=str)
 
     # model parameters.
     parser.add_argument('--model', type=str, default='')
@@ -127,12 +128,12 @@ def main():
                                    sep_token=tokenizer.sep_token, k=args.k, train=False, down_sampling=False)
     # test_set = SciFactJointPredictionData(args.corpus_path, claim_test_path, sep_token=tokenizer.sep_token)
     if args.state = 'train':
-        checkpoint = train_base(train_set, dev_set, args)
+        args.checkpoint = train_base(train_set, dev_set, args)
     if args.state = 'prediction':
-        checkpoint = 'model/RoBerta_large_w.model'
+        args.checkpoint = 'model/RoBerta_large_w.model'
         # checkpoint = 'tmp-runs/162030701614073-abstract_f1-6925-rationale_f1-6753.model'
     # print(checkpoint)
-    abstract_result, rationale_result, retrieval_result = get_predictions(args, test_set, checkpoint)
+    abstract_result, rationale_result, retrieval_result = get_predictions(args, test_set, args.checkpoint)
     rationales, labels = predictions2jsonl(test_set.samples, abstract_result, rationale_result)
     # retrieval2jsonl(test_set.samples, retrieval_result)
     # merge(rationales, labels, args.merge_results)
