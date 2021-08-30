@@ -79,3 +79,6 @@ The checkpoint of Paragraph-Joint model used for the paper (trained on training 
 
 ## Training of SCIFACT-JointModel
 Run ```main.py``` to training or prediction.
+
+## Candidate Abstract Retrieval
+File names with ```AbstractRetrieval``` are scripts for candidate abstract retrieval.
