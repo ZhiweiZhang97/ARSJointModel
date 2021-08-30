@@ -86,6 +86,6 @@ File names with ```AbstractRetrieval``` are scripts for candidate abstract retri
 ## Tuning parameters with optuna
 Run ```OptunaMain.py``` to get the hyperparameters of the loss used in the ablation experiment of the paper. If you encounter any problem regarding Optuna, please check their [repo](https://github.com/optuna/optuna).
 
-|model|$\lambda_1$|$\lambda_2$|$\lambda_3$|$\gama$|
+|model|$\lambda_1$|$\lambda_2$|$\lambda_3$|$\gema$|
 |-----|-----|-----|-----|-----|
 
