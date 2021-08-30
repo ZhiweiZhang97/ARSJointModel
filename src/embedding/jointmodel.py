@@ -125,7 +125,7 @@ class LSTM(nn.Module):
 
 class WordAttention(nn.Module):
     """
-    word-level attention. sentence representation for rationale selection.
+    Hierarchical attention. sentence representation for rationale selection.
     """
     def __init__(self, input_size, output_size, dropout=0.1):
         super(WordAttention, self).__init__()
