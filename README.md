@@ -78,7 +78,7 @@ The checkpoint of Paragraph-Joint model used for the paper (trained on training 
 
 
 ## Training of SCIFACT-JointModel
-Run ```main.py``` to training or prediction. Use ```--checkpoint``` to specify the checkpoint path.
+Run ```main.py``` to training or prediction. Use ```--state```  to select whether the run state is training or prediction. Use ```--checkpoint``` to specify the checkpoint path.
 
 ## Candidate abstract retrieval
 File names with ```AbstractRetrieval``` are scripts for candidate abstract retrieval. If use ```BioSenVecAbstractRetrieval.py```, please run ```ComputeBioSentVecAbstractEmbedding.py``` first.
