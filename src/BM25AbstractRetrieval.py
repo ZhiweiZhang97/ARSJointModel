@@ -8,7 +8,7 @@ import argparse
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="TFIDF abstract retrieval"
+        description="BM25 abstract retrieval"
     )
     parser.add_argument('--claim_file', type=str, default='../data/claims_test.jsonl')
     parser.add_argument('--corpus_file', type=str, default='../data/corpus.jsonl')
