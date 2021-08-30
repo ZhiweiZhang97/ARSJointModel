@@ -89,5 +89,5 @@ Run ```OptunaMain.py``` to get the hyperparameters of the loss used in the ablat
 ## Candidate abstract retrieval
 File names with ```AbstractRetrieval``` are scripts for candidate abstract retrieval. If use ```BioSenVecAbstractRetrieval.py```, please run ```ComputeBioSentVecAbstractEmbedding.py``` first.
 
-## Training of SCIFACT-JointModel
+## Training and Prediction
 Run ```main.py``` to training or prediction. Use ```--state```  to select whether the run state is training or prediction. Use ```--checkpoint``` to specify the checkpoint path.
