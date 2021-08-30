@@ -84,7 +84,6 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # loader dataset
     split = False
-    prediction = False
     if split:
         # split_dataset('../data/claims_train_retrieval.jsonl')
         claim_train_path = '../data/train_data_Bio.jsonl'
@@ -117,7 +116,6 @@ def main():
     # args.lambdas = [2.7, 2.2, 11.7]  # RoBerta-large w/o
     args.lambdas = [1.6, 2.5, 9.5]  # # BioBert-large share w
     printf(args, split)
-    print('共享biobert，att_score+pre_label & pre_label+att_score')
     k_train = 12
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     train_set = SciFactJointDataset(args.corpus_path, claim_train_path, sep_token=tokenizer.sep_token, k=k_train)
@@ -134,18 +132,6 @@ def main():
     abstract_result, rationale_result, retrieval_result = get_predictions(args, test_set, checkpoint)
     rationales, labels = predictions2jsonl(test_set.samples, abstract_result, rationale_result)
     retrieval2jsonl(test_set.samples, retrieval_result)
-    # merge(rationales, labels, args.merge_results)
-    if prediction:
-        merge(rationales, labels, args.merge_results)
-    else:
-        merge(rationales, labels, args.merge_results)
-        print('共享biobert，att_score+pre_label & pre_label+att_score')
-        print('rationale selection...')
-        evaluate_rationale_selection(args, "prediction/rationale_selection.jsonl")
-        print('label predictions...')
-        evaluate_label_predictions(args, "prediction/label_predictions.jsonl")
-        print('merging predictions...')
-        merge_rationale_label(rationales, labels, args, state='valid', gold=args.gold)
 
 
 if __name__ == "__main__":
