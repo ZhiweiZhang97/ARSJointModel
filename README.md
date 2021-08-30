@@ -78,6 +78,4 @@ The checkpoint of Paragraph-Joint model used for the paper (trained on training 
 
 
 ## Training of SCIFACT-JointModel
-```python
-python main.py
-``` 
+Run ```python main.py``` to training or prediction.
