@@ -76,13 +76,6 @@ pip install -r requirements.txt
 If you encounter any installation problem regarding sent2vec, please check [their repo](https://github.com/epfml/sent2vec). The BioSentVec model is available [here](https://github.com/ncbi-nlp/BioSentVec#biosentvec).
 The checkpoint of Paragraph-Joint model used for the paper (trained on training set) is available here ([RoBERTa-large](https://drive.google.com/file/d/1iV_5rNC1ZYDRp-tCRoiA70YmW_OVA1Qe/view?usp=sharing)、[w/o RR RoBERTa-large](https://drive.google.com/file/d/1fQPWoXjb5mHx8aioDrqOJdP-ym11Nw8j/view?usp=sharing)、[BioBERT-large](https://drive.google.com/file/d/1O7jOkMN-jZOsWQZEQ97O6b-TBqhW3gQn/view?usp=sharing)、[w/o RR BioBERT-large](https://drive.google.com/file/d/1lMv_PBwzLspCTrriwOZyJUvkOhI4a2uA/view?usp=sharing)).
 
-
-## Training of SCIFACT-JointModel
-Run ```main.py``` to training or prediction. Use ```--state```  to select whether the run state is training or prediction. Use ```--checkpoint``` to specify the checkpoint path.
-
-## Candidate abstract retrieval
-File names with ```AbstractRetrieval``` are scripts for candidate abstract retrieval. If use ```BioSenVecAbstractRetrieval.py```, please run ```ComputeBioSentVecAbstractEmbedding.py``` first.
-
 ## Tuning hyperparameters with optuna
 Run ```OptunaMain.py``` to get the hyperparameters of the loss used in the ablation experiment of the paper. If you encounter any problem regarding Optuna, please check [their repo](https://github.com/optuna/optuna).
 
@@ -93,3 +86,8 @@ Run ```OptunaMain.py``` to get the hyperparameters of the loss used in the ablat
 |Ours w/o RR (BioBERT-large)|0.1|10.8|4.7|-|
 |Ours (BioBERT-large)|0.2|12.0|1.1|1.9|
 
+## Candidate abstract retrieval
+File names with ```AbstractRetrieval``` are scripts for candidate abstract retrieval. If use ```BioSenVecAbstractRetrieval.py```, please run ```ComputeBioSentVecAbstractEmbedding.py``` first.
+
+## Training of SCIFACT-JointModel
+Run ```main.py``` to training or prediction. Use ```--state```  to select whether the run state is training or prediction. Use ```--checkpoint``` to specify the checkpoint path.
