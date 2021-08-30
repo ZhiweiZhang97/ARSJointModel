@@ -81,7 +81,7 @@ The checkpoint of Paragraph-Joint model used for the paper (trained on training 
 Run ```main.py``` to training or prediction. Use ```--checkpoint``` to specify the checkpoint path.
 
 ## Candidate abstract retrieval
-File names with ```AbstractRetrieval``` are scripts for candidate abstract retrieval.
+File names with ```AbstractRetrieval``` are scripts for candidate abstract retrieval. If use ```BioSenVecAbstractRetrieval.py```, please run ```ComputeBioSentVecAbstractEmbedding.py``` first.
 
 ## Tuning hyperparameters with optuna
 Run ```OptunaMain.py``` to get the hyperparameters of the loss used in the ablation experiment of the paper. If you encounter any problem regarding Optuna, please check [their repo](https://github.com/optuna/optuna).
