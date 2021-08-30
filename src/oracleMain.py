@@ -20,6 +20,10 @@ from src.dataset.utils import merge_retrieval
 from utils import token_idx_by_sentence
 
 
+'''
+# evaluation model.(“Oracle abstract”)
+'''
+
 def merge(args, state='valid', gold=''):
     '''
     # ================================================================================================================ #
