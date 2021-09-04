@@ -91,3 +91,6 @@ File names with ```AbstractRetrieval``` are scripts for candidate abstract retri
 
 ## Training and Prediction
 Run ```main.py``` to training or prediction. Use ```--state```  to select whether the run state is training or prediction. Use ```--checkpoint``` to specify the checkpoint path.
+
+## Baseline
+We compared our ARSJOINT approach with [Paragraph-Joint](https://github.com/jacklxc/ParagraphJointModel), [VERISCI](https://github.com/allenai/scifact) and [VERT5ERINI](https://github.com/castorini/pygaggle/tree/master/experiments/vert5erini).  
