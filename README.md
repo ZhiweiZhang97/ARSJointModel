@@ -10,6 +10,8 @@ This is the implementation of EMNLP2021 paper Abstract, Rationale, Stance: A Joi
 4. Select sentences as evidence for the label -->
 
 ## Dataset
+We breifly describe Dataset as follows. For detail about this Dataset, please reference to [SCIVER](https://sdproc.org/2021/sharedtasks.html#3c).
+
 * A list of abstracts from the corpus containing relevant evidence.
 * A label indicating whether each abstract Supports or Refutes the claim.
 * All evidence sets found in each abstract that justify the label. An evidence set is a collection of sentences that, taken together, verifies the claim. Evidence sets can be one or more sentences.
@@ -35,7 +37,9 @@ This is the implementation of EMNLP2021 paper Abstract, Rationale, Stance: A Joi
 }
 ```
 ## Evaluation
-Two evaluation metrics will be used. 
+We evaluate our approach following the evaluation method used by [SciFact](https://github.com/allenai/scifact/blob/master/doc/evaluation.md) and [SCIVER](https://sdproc.org/2021/sharedtasks.html#3c).
+
+Two task of evaluation are used. We breifly describe them as follows. For detail about this evaluation method, please reference to URL.
 
 **Abstract-level evaluation**
 
@@ -45,7 +49,7 @@ Abstract-level evaluation is similar to the FEVER score, described in the FEVER 
 2. The abstract's predicted Support or Refute label matches its gold label.
 3. The abstract's predicted evidence sentences contain at least one full gold evidence set. Inspired by the FEVER score, the number of predicted sentences is limited to 3.
 
-We then compute the F1 score over all predicted abstracts.
+We then compute the Precision(P), Recall(R), and F1-score(F1) over all predicted abstracts.
 
 **Sentence-level evaluation**
 
@@ -55,7 +59,9 @@ Sentence-level evaluation scores the correctness of the individual predicted evi
 2. The sentence is part of some gold evidence set.
 3. All other sentences in that same gold evidence set are also identified by the model as evidence sentences.
 
-We then compute the F1 score over all predicted evidence sentences. Here's a simple [step-by-step](https://github.com/allenai/scifact/blob/master/doc/evaluation.md) example showing how these metrics are calculated.
+We then compute the Precision(P), Recall(R), and F1-score(F1) over all predicted evidence sentences.
+
+Here's a simple [step-by-step](https://github.com/allenai/scifact/blob/master/doc/evaluation.md) example showing how these metrics are calculated.
 
 
 
@@ -74,23 +80,24 @@ Then, install Python requirements:
 pip install -r requirements.txt
 ```
 If you encounter any installation problem regarding sent2vec, please check [their repo](https://github.com/epfml/sent2vec). The BioSentVec model is available [here](https://github.com/ncbi-nlp/BioSentVec#biosentvec).
-The checkpoint of Paragraph-Joint model used for the paper (trained on training set) is available here ([RoBERTa-large](https://drive.google.com/file/d/1iV_5rNC1ZYDRp-tCRoiA70YmW_OVA1Qe/view?usp=sharing)、[w/o RR RoBERTa-large](https://drive.google.com/file/d/1fQPWoXjb5mHx8aioDrqOJdP-ym11Nw8j/view?usp=sharing)、[BioBERT-large](https://drive.google.com/file/d/1O7jOkMN-jZOsWQZEQ97O6b-TBqhW3gQn/view?usp=sharing)、[w/o RR BioBERT-large](https://drive.google.com/file/d/1lMv_PBwzLspCTrriwOZyJUvkOhI4a2uA/view?usp=sharing)).
 
-## Tuning hyperparameters with optuna
-Run ```OptunaMain.py``` to get the hyperparameters of the loss used in the ablation experiment of the paper. If you encounter any problem regarding Optuna, please check [their repo](https://github.com/optuna/optuna).
+The checkpoints of our ARSJoint model (trained on training set) are available here ([ARSJoint (RoBERTa-large)](https://drive.google.com/file/d/1iV_5rNC1ZYDRp-tCRoiA70YmW_OVA1Qe/view?usp=sharing), [ARSJoint w/o RR (RoBERTa-large)](https://drive.google.com/file/d/1fQPWoXjb5mHx8aioDrqOJdP-ym11Nw8j/view?usp=sharing), [ARSJoint (BioBERT-large)](https://drive.google.com/file/d/1O7jOkMN-jZOsWQZEQ97O6b-TBqhW3gQn/view?usp=sharing), [ARSJoint w/o RR (BioBERT-large)](https://drive.google.com/file/d/1lMv_PBwzLspCTrriwOZyJUvkOhI4a2uA/view?usp=sharing)).
+
+## Hyperparameters Tuning  with Optuna
+Run ```OptunaMain.py``` to tune the hyperparameters ($\lambda_1$, $\lambda_2$, $\lambda_3$, $\gamma$) in the joint loss used in the experiments of the paper. If you encounter any problem regarding Optuna, please check [their repo](https://github.com/optuna/optuna).
 
 |model|$\lambda_1$|$\lambda_2$|$\lambda_3$|$\gamma$|
 |-----|-----|-----|-----|-----|
-|Ours w/o RR (RoBERTa-large)|2.7|11.7|2.2|-|
-|Ours (RoBERTa-large)|0.9|11.1|2.6|2.2|
-|Ours w/o RR (BioBERT-large)|0.1|10.8|4.7|-|
-|Ours (BioBERT-large)|0.2|12.0|1.1|1.9|
+|ARSJoint w/o RR (RoBERTa-large)|2.7|11.7|2.2|-|
+|ARSJoint (RoBERTa-large)|0.9|11.1|2.6|2.2|
+|ARSJoint w/o RR (BioBERT-large)|0.1|10.8|4.7|-|
+|ARSJoint (BioBERT-large)|0.2|12.0|1.1|1.9|
 
-## Candidate abstract retrieval
-File names with ```AbstractRetrieval``` are scripts for candidate abstract retrieval. If use ```BioSenVecAbstractRetrieval.py```, please run ```ComputeBioSentVecAbstractEmbedding.py``` first.
+## Pre-processing
+The files ```**AbstractRetrieval.py``` are the scripts for selecting top-*k* candidate abstract. Note that, if using ```BioSenVecAbstractRetrieval.py```, please run ```ComputeBioSentVecAbstractEmbedding.py``` first.
 
 ## Training and Prediction
-Run ```main.py``` to training or prediction. Use ```--state```  to select whether the run state is training or prediction. Use ```--checkpoint``` to specify the checkpoint path.
+Run ```main.py``` to train or prediction. Use ```--state```  to specify whether the runing state is training or prediction. Use ```--checkpoint``` to specify the checkpoint path.
 
 ## Baseline
-We compared our ARSJOINT approach with [Paragraph-Joint](https://github.com/jacklxc/ParagraphJointModel), [VERISCI](https://github.com/allenai/scifact) and [VERT5ERINI](https://github.com/castorini/pygaggle/tree/master/experiments/vert5erini).  
+We compare our ARSJOINT approach with [Paragraph-Joint](https://github.com/jacklxc/ParagraphJointModel), [VERISCI](https://github.com/allenai/scifact) and [VERT5ERINI](https://github.com/castorini/pygaggle/tree/master/experiments/vert5erini).  
