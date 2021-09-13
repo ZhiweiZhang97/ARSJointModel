@@ -10,7 +10,7 @@ This is the implementation of EMNLP2021 paper Abstract, Rationale, Stance: A Joi
 4. Select sentences as evidence for the label -->
 
 ## Dataset
-We breifly describe Dataset as follows. For detail about this Dataset, please reference to [SCIVER](https://sdproc.org/2021/sharedtasks.html#3c).
+We breifly describe the dataset as follows. For detail about this dataset, please refer to [SCIVER](https://sdproc.org/2021/sharedtasks.html#3c).
 
 * A list of abstracts from the corpus containing relevant evidence.
 * A label indicating whether each abstract Supports or Refutes the claim.
@@ -39,7 +39,7 @@ We breifly describe Dataset as follows. For detail about this Dataset, please re
 ## Evaluation
 We evaluate our approach following the evaluation method used by [SciFact](https://github.com/allenai/scifact/blob/master/doc/evaluation.md) and [SCIVER](https://sdproc.org/2021/sharedtasks.html#3c).
 
-Two task of evaluation are used. We breifly describe them as follows. For detail about this evaluation method, please reference to URL.
+Two task of evaluation are used. We breifly describe them as follows. For detail about this evaluation method, please refer to the URLs.
 
 **Abstract-level evaluation**
 
