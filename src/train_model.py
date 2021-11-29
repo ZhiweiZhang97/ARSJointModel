@@ -48,7 +48,7 @@ def train_base(train_set, dev_set, args):
     model.train()
     checkpoint = os.path.join(args.save, f'JointModel.model')
     for epoch in range(args.epochs):
-        abstract_sample, rationale_sample = schedule_sample_p(epoch, args.epochs + 10)
+        abstract_sample, rationale_sample = schedule_sample_p(epoch, args.epochs)
         model.train()  # cudnn RNN backward can only be called in training mode
         t = tqdm(DataLoader(train_set, batch_size=1, shuffle=True))
         for i, batch in enumerate(t):
