@@ -8,8 +8,8 @@ from transformers import AutoTokenizer, AutoModel, get_cosine_schedule_with_warm
 from pathlib import Path
 import numpy as np
 
-# from embedding.jointmodel import JointModelClassifier
-from embedding.model import JointModelClassifier
+from embedding.jointmodel import JointModelClassifier
+# from embedding.model import JointModelClassifier
 # from embedding.AutomaticWeightedLoss import AutomaticWeightedLoss
 from evaluation.evaluation_model import evaluation_joint, evaluation_abstract_retrieval
 from dataset.encode import encode_paragraph
