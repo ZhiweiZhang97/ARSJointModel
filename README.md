@@ -101,3 +101,18 @@ Run ```main.py``` to train or prediction. Use ```--state```  to specify whether 
 
 ## Baseline
 We compare our ARSJOINT approach with [Paragraph-Joint](https://github.com/jacklxc/ParagraphJointModel), [VERISCI](https://github.com/allenai/scifact) and [VERT5ERINI](https://github.com/castorini/pygaggle/tree/master/experiments/vert5erini).  
+
+## Citation
+```
+@inproceedings{ARSJoint,
+    title = "Abstract, Rationale, Stance: A Joint Model for Scientific Claim Verification",
+    author = "Zhang, Zhiwei  and  Li, Jiyi  and  Fukumoto, Fumiyo  and  Ye, Yanming",
+    booktitle = "Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing",
+    month = nov,
+    year = "2021",
+    address = "Online and Punta Cana, Dominican Republic",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/2021.emnlp-main.290",
+    pages = "3580--3586",
+}
+```
